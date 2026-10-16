@@ -51,31 +51,35 @@ public partial class ScenarioBuilderWindow : UserControl
     {
         WorkflowCanvas.Children.Clear();
         const double left = 28;
-        const double cardWidth = 340;
+        const double cardWidth = 250;
         const double cardHeight = 62;
-        const double stepGap = 34;
+        const double horizontalGap = 24;
+        const double verticalGap = 42;
+        var availableWidth = WorkflowCanvas.ActualWidth > 0 ? WorkflowCanvas.ActualWidth : 760;
+        var columns = Math.Max(1, (int)Math.Floor((availableWidth - left + horizontalGap) / (cardWidth + horizontalGap)));
 
         for (var index = 0; index < nodes.Count; index++)
         {
             var node = nodes[index];
-            var top = 22 + index * (cardHeight + stepGap);
+            var row = index / columns;
+            var column = index % columns;
+            var x = left + column * (cardWidth + horizontalGap);
+            var top = 22 + row * (cardHeight + verticalGap);
             if (index > 0)
             {
-                WorkflowCanvas.Children.Add(new Line
+                var previousRow = (index - 1) / columns;
+                var previousColumn = (index - 1) % columns;
+                var previousX = left + previousColumn * (cardWidth + horizontalGap);
+                var previousY = 22 + previousRow * (cardHeight + verticalGap);
+                if (row == previousRow)
                 {
-                    X1 = left + cardWidth / 2,
-                    X2 = left + cardWidth / 2,
-                    Y1 = top - stepGap + 2,
-                    Y2 = top - 2,
-                    Stroke = new SolidColorBrush(Color.FromRgb(91, 126, 151)),
-                    StrokeThickness = 2,
-                    SnapsToDevicePixels = true
-                });
-                WorkflowCanvas.Children.Add(new Polygon
+                    AddConnector(new Point(previousX + cardWidth, previousY + cardHeight / 2), new Point(x, top + cardHeight / 2));
+                }
+                else
                 {
-                    Points = new PointCollection([new Point(left + cardWidth / 2 - 5, top - 8), new Point(left + cardWidth / 2 + 5, top - 8), new Point(left + cardWidth / 2, top - 1)]),
-                    Fill = new SolidColorBrush(Color.FromRgb(91, 126, 151))
-                });
+                    var yTurn = previousY + cardHeight + verticalGap / 2;
+                    AddConnector(new Point(previousX + cardWidth, previousY + cardHeight / 2), new Point(previousX + cardWidth + horizontalGap / 2, previousY + cardHeight / 2), new Point(previousX + cardWidth + horizontalGap / 2, yTurn), new Point(x - horizontalGap / 2, yTurn), new Point(x - horizontalGap / 2, top + cardHeight / 2), new Point(x, top + cardHeight / 2));
+                }
             }
 
             var accent = MethodColor(node.Method);
@@ -98,10 +102,23 @@ public partial class ScenarioBuilderWindow : UserControl
                 TextTrimming = TextTrimming.CharacterEllipsis,
                 VerticalAlignment = VerticalAlignment.Center
             };
-            Canvas.SetLeft(card, left); Canvas.SetTop(card, top); WorkflowCanvas.Children.Add(card);
+            Canvas.SetLeft(card, x); Canvas.SetTop(card, top); WorkflowCanvas.Children.Add(card);
         }
 
-        WorkflowCanvas.Height = Math.Max(450, 44 + nodes.Count * (cardHeight + stepGap));
+        var rows = nodes.Count == 0 ? 1 : (nodes.Count + columns - 1) / columns;
+        WorkflowCanvas.Height = Math.Max(450, 44 + rows * (cardHeight + verticalGap));
+    }
+
+    private void AddConnector(params Point[] points)
+    {
+        var stroke = new SolidColorBrush(Color.FromRgb(91, 126, 151));
+        WorkflowCanvas.Children.Add(new Polyline { Points = new PointCollection(points), Stroke = stroke, StrokeThickness = 2, SnapsToDevicePixels = true });
+        var end = points[^1];
+        var previous = points[^2];
+        var pointsForArrow = previous.X <= end.X
+            ? new PointCollection([new Point(end.X - 7, end.Y - 4), new Point(end.X - 7, end.Y + 4), new Point(end.X, end.Y)])
+            : new PointCollection([new Point(end.X + 7, end.Y - 4), new Point(end.X + 7, end.Y + 4), new Point(end.X, end.Y)]);
+        WorkflowCanvas.Children.Add(new Polygon { Points = pointsForArrow, Fill = stroke });
     }
 
     private static Color MethodColor(string method) => method.ToUpperInvariant() switch
