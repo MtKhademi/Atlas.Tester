@@ -133,7 +133,7 @@ public partial class HomeWindow : Window
         var values = new[] { project.Name, project.BackendUrl, project.OpenApiPath };
         for (var i = 0; i < values.Length; i++) { var text = new TextBlock { Text = values[i], Foreground = Brushes.White, Padding = new Thickness(18, 14, 18, 14), TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center, IsHitTestVisible = false }; Grid.SetRow(text, row); Grid.SetColumn(text, i); table.Children.Add(text); }
         var actions = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
-        actions.Children.Add(CreateIconButton(Wpf.Ui.Controls.SymbolRegular.Play24, "Use project", (_, _) => { activeProject = project; AlertWindow.Show(this, "Active project", $"{project.Name} is now active."); }));
+        actions.Children.Add(CreateIconButton(Wpf.Ui.Controls.SymbolRegular.Play24, "Use project", (_, _) => { activeProject = project; ShowProjects(); }));
         actions.Children.Add(CreateIconButton(Wpf.Ui.Controls.SymbolRegular.Edit24, "Edit project", async (_, _) => await EditProjectAsync(project)));
         actions.Children.Add(CreateIconButton(Wpf.Ui.Controls.SymbolRegular.Delete24, "Delete project", async (_, _) => await DeleteProjectAsync(project), true));
         Grid.SetRow(actions, row); Grid.SetColumn(actions, 3); table.Children.Add(actions);
