@@ -1,0 +1,10 @@
+bin/
+obj/
+.vs/
+.idea/
+scenarios/
+reports/
+appsettings.Local.json
+*.user
+*.suo
+
