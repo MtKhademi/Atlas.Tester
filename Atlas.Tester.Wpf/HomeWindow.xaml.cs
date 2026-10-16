@@ -2,11 +2,16 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
+using Atlas.Tester.Engine;
 
 namespace AtlasTesterDesktop;
 
 public partial class HomeWindow : Window
 {
+    private readonly ProjectStore projectStore = new();
+    private ProjectDefinition? activeProject;
+    private ComboBox? projectSelector;
+    private TextBlock? projectDetails;
     public HomeWindow()
     {
         InitializeComponent();
@@ -39,6 +44,10 @@ public partial class HomeWindow : Window
             });
         }
 
+        var projectButton = new Button { Content = "⌘\nProjects", Background = Brushes.Transparent, Foreground = new SolidColorBrush(Color.FromRgb(183, 187, 200)), BorderThickness = new Thickness(0), Height = 58, Margin = new Thickness(0, 0, 0, 10), ToolTip = "Projects" };
+        projectButton.Click += Projects_Click;
+        nav.Children.Insert(2, projectButton);
+
         foreach (var button in nav.Children.OfType<Button>().ToArray())
         {
             var label = button.Content?.ToString() ?? string.Empty;
@@ -50,16 +59,20 @@ public partial class HomeWindow : Window
 
             var icon = label.Contains("Home", StringComparison.OrdinalIgnoreCase)
                 ? Wpf.Ui.Controls.SymbolRegular.Home32
+                : label.Contains("Projects", StringComparison.OrdinalIgnoreCase)
+                    ? Wpf.Ui.Controls.SymbolRegular.Folder24
                 : label.Contains("Tests", StringComparison.OrdinalIgnoreCase)
                     ? Wpf.Ui.Controls.SymbolRegular.PlayCircle28
                     : Wpf.Ui.Controls.SymbolRegular.BranchFork24;
             button.Tag = label.Contains("Home", StringComparison.OrdinalIgnoreCase)
                 ? "Home"
+                : label.Contains("Projects", StringComparison.OrdinalIgnoreCase) ? "Projects"
                 : label.Contains("Tests", StringComparison.OrdinalIgnoreCase) ? "Tests" : "Scenarios";
             button.Content = new Wpf.Ui.Controls.SymbolIcon { Symbol = icon, FontSize = 24 };
             button.ToolTip = button.Tag?.ToString() switch
             {
                 "Home" => "Home",
+                "Projects" => "Projects",
                 "Tests" => "Performance test",
                 "Scenarios" => "Scenario builder",
                 _ => null
@@ -73,14 +86,47 @@ public partial class HomeWindow : Window
         }
     }
     private void Home_Click(object sender, RoutedEventArgs e) => ShowHome();
+    private void Projects_Click(object sender, RoutedEventArgs e) => ShowProjects();
     private void Tests_Click(object sender, RoutedEventArgs e) => ShowPage(new MainWindow());
-    private async void Scenarios_Click(object sender, RoutedEventArgs e) => await OpenScenarioBuilderAsync(new Uri("http://localhost:5000/"));
+    private async void Scenarios_Click(object sender, RoutedEventArgs e) => await OpenScenarioBuilderAsync(new Uri(activeProject?.BackendUrl ?? "http://localhost:5000"));
     private void Theme_Click(object sender, RoutedEventArgs e) { }
     private void ShowHome()
     {
         HomeContent.Visibility = Visibility.Visible;
         PageContent.Visibility = Visibility.Collapsed;
         SetNavigationState("Home");
+    }
+
+    private void ShowProjects()
+    {
+        HomeContent.Visibility = Visibility.Collapsed;
+        PageContent.Visibility = Visibility.Visible;
+        SetNavigationState("Projects");
+        var root = new StackPanel { Margin = new Thickness(30) };
+        root.Children.Add(new TextBlock { Text = "ATLAS  /  PROJECTS", Foreground = new SolidColorBrush(Color.FromRgb(85, 181, 255)), FontSize = 14, FontWeight = FontWeights.Bold });
+        root.Children.Add(new TextBlock { Text = "Project workspaces", Foreground = Brushes.White, FontSize = 32, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 10, 0, 4) });
+        root.Children.Add(new TextBlock { Text = "Manage backend targets, API catalogs and test assets per project", Foreground = new SolidColorBrush(Color.FromRgb(174, 179, 192)), FontSize = 14, Margin = new Thickness(0, 0, 0, 22) });
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 0, 0, 14) };
+        var add = new Button { Content = "+ Add project", Padding = new Thickness(14, 8, 14, 8), Background = new SolidColorBrush(Color.FromRgb(33, 111, 164)), Foreground = Brushes.White, BorderThickness = new Thickness(0) }; add.Click += AddProject_Click; actions.Children.Add(add); root.Children.Add(actions);
+        var table = new Grid { Background = new SolidColorBrush(Color.FromRgb(53, 55, 70)), Margin = new Thickness(0, 0, 0, 12) }; table.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.2, GridUnitType.Star) }); table.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.8, GridUnitType.Star) }); table.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.3, GridUnitType.Star) }); table.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        AddTableHeader(table);
+        foreach (var p in projectStore.List()) AddProjectRow(table, p, table.RowDefinitions.Count);
+        if (table.RowDefinitions.Count == 1) { table.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); table.Children.Add(new TextBlock { Text = "No projects yet. Add your first backend project.", Foreground = new SolidColorBrush(Color.FromRgb(174, 179, 192)), Padding = new Thickness(18) }); Grid.SetRow(table.Children[^1], 1); Grid.SetColumnSpan(table.Children[^1], 4); }
+        root.Children.Add(table); PageContent.Content = root;
+    }
+
+    private static void AddTableHeader(Grid table)
+    {
+        table.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        foreach (var item in new[] { "PROJECT", "BACKEND", "OPENAPI", "" }) { var text = new TextBlock { Text = item, Foreground = new SolidColorBrush(Color.FromRgb(174, 179, 192)), FontSize = 10, FontWeight = FontWeights.Bold, Padding = new Thickness(18, 12, 18, 12) }; Grid.SetRow(text, 0); Grid.SetColumn(text, Array.IndexOf(new[] { "PROJECT", "BACKEND", "OPENAPI", "" }, item)); table.Children.Add(text); }
+    }
+
+    private void AddProjectRow(Grid table, ProjectDefinition project, int row)
+    {
+        table.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        var values = new[] { project.Name, project.BackendUrl, project.OpenApiPath };
+        for (var i = 0; i < values.Length; i++) { var text = new TextBlock { Text = values[i], Foreground = Brushes.White, Padding = new Thickness(18, 14, 18, 14), TextTrimming = TextTrimming.CharacterEllipsis }; Grid.SetRow(text, row); Grid.SetColumn(text, i); table.Children.Add(text); }
+        var select = new Button { Content = "Use", Padding = new Thickness(10, 5, 10, 5), Margin = new Thickness(8), Tag = project }; select.Click += (_, _) => { activeProject = project; AlertWindow.Show(this, "Active project", $"{project.Name} is now active."); }; Grid.SetRow(select, row); Grid.SetColumn(select, 3); table.Children.Add(select);
     }
     private void ShowPage(object page)
     {
@@ -239,4 +285,44 @@ public partial class HomeWindow : Window
         }
     }
     public async Task OpenScenarioBuilderAsync(Uri target) => ShowPage(await ScenarioBuilderWindow.CreateAsync(target));
+
+    private void SetupProjectsPanel()
+    {
+        if (HomeContent.Content is not StackPanel home) return;
+        var projects = projectStore.List(); activeProject = projects.FirstOrDefault();
+        var panel = new Border { Background = new SolidColorBrush(Color.FromRgb(53, 55, 70)), BorderBrush = new SolidColorBrush(Color.FromRgb(69, 72, 88)), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(10), Padding = new Thickness(18), Margin = new Thickness(0, 0, 0, 18) };
+        var layout = new Grid(); layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        var header = new DockPanel(); header.Children.Add(new TextBlock { Text = "ACTIVE PROJECT", Foreground = new SolidColorBrush(Color.FromRgb(174, 179, 192)), FontSize = 11, FontWeight = FontWeights.Bold });
+        var add = new Button { Content = "+ Add project", Foreground = Brushes.White, Background = new SolidColorBrush(Color.FromRgb(33, 111, 164)), BorderThickness = new Thickness(0), Padding = new Thickness(12, 6, 12, 6), HorizontalAlignment = HorizontalAlignment.Right }; add.Click += AddProject_Click; DockPanel.SetDock(add, Dock.Right); header.Children.Insert(0, add); Grid.SetRow(header, 0); layout.Children.Add(header);
+        projectSelector = new ComboBox { ItemsSource = projects, DisplayMemberPath = nameof(ProjectDefinition.Name), SelectedItem = activeProject, Margin = new Thickness(0, 12, 0, 6) }; projectSelector.SelectionChanged += (_, _) => { activeProject = projectSelector.SelectedItem as ProjectDefinition; UpdateProjectDetails(); }; Grid.SetRow(projectSelector, 1); layout.Children.Add(projectSelector);
+        projectDetails = new TextBlock { Foreground = new SolidColorBrush(Color.FromRgb(216, 220, 229)), FontSize = 12, TextWrapping = TextWrapping.Wrap }; Grid.SetRow(projectDetails, 2); layout.Children.Add(projectDetails); panel.Child = layout; home.Children.Insert(4, panel); UpdateProjectDetails();
+    }
+
+    private void UpdateProjectDetails() => projectDetails!.Text = activeProject is null ? "No project yet. Add a backend project to start." : $"{activeProject.BackendUrl}{activeProject.OpenApiPath}\nCatalog and scenarios will use this project.";
+
+    private async void AddProject_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var dialog = new ProjectDialog(this);
+            if (dialog.ShowDialog() != true) return;
+
+            await projectStore.SaveAsync(dialog.Project);
+            activeProject = dialog.Project;
+
+            if (projectSelector is not null)
+            {
+                projectSelector.ItemsSource = projectStore.List();
+                projectSelector.SelectedItem = activeProject;
+                UpdateProjectDetails();
+            }
+
+            if (PageContent.Visibility == Visibility.Visible && activeProject is not null)
+                ShowProjects();
+        }
+        catch (Exception ex)
+        {
+            AlertWindow.Show(this, "Project error", ex.Message, true);
+        }
+    }
 }
