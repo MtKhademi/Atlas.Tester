@@ -108,7 +108,7 @@ public partial class HomeWindow : Window
         root.Children.Add(new TextBlock { Text = "Manage backend targets, API catalogs and test assets per project", Foreground = new SolidColorBrush(Color.FromRgb(174, 179, 192)), FontSize = 14, Margin = new Thickness(0, 0, 0, 22) });
         var actions = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 0, 0, 14) };
         var add = new Button { Content = "+ Add project", Padding = new Thickness(14, 8, 14, 8), Background = new SolidColorBrush(Color.FromRgb(33, 111, 164)), Foreground = Brushes.White, BorderThickness = new Thickness(0) }; add.Click += AddProject_Click; actions.Children.Add(add); root.Children.Add(actions);
-        var table = new Grid { Background = new SolidColorBrush(Color.FromRgb(53, 55, 70)), Margin = new Thickness(0, 0, 0, 12) }; table.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.2, GridUnitType.Star) }); table.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.8, GridUnitType.Star) }); table.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.3, GridUnitType.Star) }); table.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var table = new Grid { Background = new SolidColorBrush(Color.FromRgb(48, 50, 64)), Margin = new Thickness(0, 0, 0, 12) }; table.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.2, GridUnitType.Star) }); table.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.8, GridUnitType.Star) }); table.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.3, GridUnitType.Star) }); table.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         AddTableHeader(table);
         foreach (var p in projectStore.List()) AddProjectRow(table, p, table.RowDefinitions.Count);
         if (table.RowDefinitions.Count == 1) { table.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); table.Children.Add(new TextBlock { Text = "No projects yet. Add your first backend project.", Foreground = new SolidColorBrush(Color.FromRgb(174, 179, 192)), Padding = new Thickness(18) }); Grid.SetRow(table.Children[^1], 1); Grid.SetColumnSpan(table.Children[^1], 4); }
@@ -118,15 +118,42 @@ public partial class HomeWindow : Window
     private static void AddTableHeader(Grid table)
     {
         table.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        foreach (var item in new[] { "PROJECT", "BACKEND", "OPENAPI", "" }) { var text = new TextBlock { Text = item, Foreground = new SolidColorBrush(Color.FromRgb(174, 179, 192)), FontSize = 10, FontWeight = FontWeights.Bold, Padding = new Thickness(18, 12, 18, 12) }; Grid.SetRow(text, 0); Grid.SetColumn(text, Array.IndexOf(new[] { "PROJECT", "BACKEND", "OPENAPI", "" }, item)); table.Children.Add(text); }
+        foreach (var item in new[] { "PROJECT", "BACKEND", "OPENAPI", "" }) { var text = new TextBlock { Text = item, Foreground = new SolidColorBrush(Color.FromRgb(205, 214, 226)), FontSize = 10, FontWeight = FontWeights.Bold, Padding = new Thickness(18, 12, 18, 12), Background = new SolidColorBrush(Color.FromRgb(43, 45, 58)) }; Grid.SetRow(text, 0); Grid.SetColumn(text, Array.IndexOf(new[] { "PROJECT", "BACKEND", "OPENAPI", "" }, item)); table.Children.Add(text); }
     }
 
     private void AddProjectRow(Grid table, ProjectDefinition project, int row)
     {
         table.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        var selected = activeProject?.Id == project.Id;
+        var rowBackground = new Border { Background = new SolidColorBrush(selected ? Color.FromRgb(48, 105, 83) : Color.FromRgb(57, 59, 74)), BorderBrush = new SolidColorBrush(Color.FromRgb(70, 73, 88)), BorderThickness = new Thickness(0, 0, 0, 1), Cursor = System.Windows.Input.Cursors.Hand };
+        Grid.SetRow(rowBackground, row); Grid.SetColumnSpan(rowBackground, 4); table.Children.Add(rowBackground);
+        rowBackground.MouseEnter += (_, _) => { if (activeProject?.Id != project.Id) rowBackground.Background = new SolidColorBrush(Color.FromRgb(68, 72, 89)); };
+        rowBackground.MouseLeave += (_, _) => { rowBackground.Background = new SolidColorBrush(activeProject?.Id == project.Id ? Color.FromRgb(48, 105, 83) : Color.FromRgb(57, 59, 74)); };
+        rowBackground.MouseLeftButtonUp += (_, _) => { activeProject = project; ShowProjects(); };
         var values = new[] { project.Name, project.BackendUrl, project.OpenApiPath };
-        for (var i = 0; i < values.Length; i++) { var text = new TextBlock { Text = values[i], Foreground = Brushes.White, Padding = new Thickness(18, 14, 18, 14), TextTrimming = TextTrimming.CharacterEllipsis }; Grid.SetRow(text, row); Grid.SetColumn(text, i); table.Children.Add(text); }
-        var select = new Button { Content = "Use", Padding = new Thickness(10, 5, 10, 5), Margin = new Thickness(8), Tag = project }; select.Click += (_, _) => { activeProject = project; AlertWindow.Show(this, "Active project", $"{project.Name} is now active."); }; Grid.SetRow(select, row); Grid.SetColumn(select, 3); table.Children.Add(select);
+        for (var i = 0; i < values.Length; i++) { var text = new TextBlock { Text = values[i], Foreground = Brushes.White, Padding = new Thickness(18, 14, 18, 14), TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center, IsHitTestVisible = false }; Grid.SetRow(text, row); Grid.SetColumn(text, i); table.Children.Add(text); }
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+        actions.Children.Add(CreateIconButton(Wpf.Ui.Controls.SymbolRegular.Play24, "Use project", (_, _) => { activeProject = project; AlertWindow.Show(this, "Active project", $"{project.Name} is now active."); }));
+        actions.Children.Add(CreateIconButton(Wpf.Ui.Controls.SymbolRegular.Edit24, "Edit project", async (_, _) => await EditProjectAsync(project)));
+        actions.Children.Add(CreateIconButton(Wpf.Ui.Controls.SymbolRegular.Delete24, "Delete project", async (_, _) => await DeleteProjectAsync(project), true));
+        Grid.SetRow(actions, row); Grid.SetColumn(actions, 3); table.Children.Add(actions);
+    }
+
+    private static Button CreateIconButton(Wpf.Ui.Controls.SymbolRegular symbol, string tooltip, RoutedEventHandler click, bool danger = false)
+    {
+        var button = new Button { Content = new Wpf.Ui.Controls.SymbolIcon { Symbol = symbol, FontSize = 18 }, ToolTip = tooltip, Padding = new Thickness(8), Margin = new Thickness(2), Background = Brushes.Transparent, Foreground = new SolidColorBrush(danger ? Color.FromRgb(220, 105, 115) : Color.FromRgb(174, 210, 235)), BorderThickness = new Thickness(0) }; button.Click += click; return button;
+    }
+
+    private async Task EditProjectAsync(ProjectDefinition project)
+    {
+        var dialog = new ProjectDialog(this, project); if (dialog.ShowDialog() != true) return;
+        await projectStore.SaveAsync(dialog.Project); if (activeProject?.Id == project.Id) activeProject = dialog.Project; ShowProjects();
+    }
+
+    private async Task DeleteProjectAsync(ProjectDefinition project)
+    {
+        if (MessageBox.Show($"Delete project '{project.Name}'?", "Delete project", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+        await projectStore.DeleteAsync(project.Id); if (activeProject?.Id == project.Id) activeProject = null; ShowProjects();
     }
     private void ShowPage(object page)
     {
