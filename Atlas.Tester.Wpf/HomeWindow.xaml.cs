@@ -87,8 +87,25 @@ public partial class HomeWindow : Window
     }
     private void Home_Click(object sender, RoutedEventArgs e) => ShowHome();
     private void Projects_Click(object sender, RoutedEventArgs e) => ShowProjects();
-    private void Tests_Click(object sender, RoutedEventArgs e) => ShowPage(new MainWindow());
-    private async void Scenarios_Click(object sender, RoutedEventArgs e) => await OpenScenarioBuilderAsync(new Uri(activeProject?.BackendUrl ?? "http://localhost:5000"));
+    private void Tests_Click(object sender, RoutedEventArgs e)
+    {
+        if (!EnsureProjectSelected()) return;
+        ShowPage(new MainWindow(new Uri(activeProject!.BackendUrl)));
+    }
+
+    private async void Scenarios_Click(object sender, RoutedEventArgs e)
+    {
+        if (!EnsureProjectSelected()) return;
+        await OpenScenarioBuilderAsync(new Uri(activeProject!.BackendUrl));
+    }
+
+    private bool EnsureProjectSelected()
+    {
+        if (activeProject is not null) return true;
+        AlertWindow.Show(this, "Select a project", "Choose an active project from Projects before opening Tests or Scenario Builder.", true);
+        ShowProjects();
+        return false;
+    }
     private void Theme_Click(object sender, RoutedEventArgs e) { }
     private void ShowHome()
     {

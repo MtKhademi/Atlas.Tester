@@ -22,11 +22,12 @@ public partial class MainWindow : UserControl
     private readonly Dictionary<string, string> savedScenarioPaths = new(StringComparer.OrdinalIgnoreCase);
     private string? latestReportDirectory;
 
-    public MainWindow()
+    public MainWindow(Uri? projectBackend = null)
     {
         Log.Logger = new LoggerConfiguration().MinimumLevel.Debug().WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}").CreateLogger();
         Log.Information("Tester UI started");
         InitializeComponent();
+        if (projectBackend is not null) TargetUrlBox.Text = projectBackend.ToString().TrimEnd('/');
         ChartStatus.Text = "Ready to run · results will appear here";
         ReportStatus.Text = "No test has run yet. Reports will be generated after completion.";
         AddReportActions();
