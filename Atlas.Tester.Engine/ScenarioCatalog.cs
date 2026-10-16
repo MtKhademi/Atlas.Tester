@@ -1,11 +1,11 @@
-namespace Atlas.LoadTest.Engine;
+namespace Atlas.Tester.Engine;
 
 public sealed record ScenarioStep(string Name, string Method, string Path, bool RequiresAuthentication);
-public sealed record LoadTestScenario(string Key, string DisplayName, IReadOnlyList<ScenarioStep> Steps);
+public sealed record TesterScenario(string Key, string DisplayName, IReadOnlyList<ScenarioStep> Steps);
 
 public static class ScenarioCatalog
 {
-    public static IReadOnlyList<LoadTestScenario> All { get; } =
+    public static IReadOnlyList<TesterScenario> All { get; } =
     [
         new("user-portfolio", "User portfolio journey", [
             new("Login", "POST", "/iam/api/auth/login", false),

@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="Atlas.Tester.Engine.Tests/Atlas.Tester.Engine.Tests.csproj" />
+  <Project Path="Atlas.Tester.Engine/Atlas.Tester.Engine.csproj" />
+  <Project Path="Atlas.Tester.Wpf/Atlas.Tester.Wpf.csproj" />
+</Solution>

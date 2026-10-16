@@ -6,10 +6,10 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.ComponentModel;
 using System.Windows.Data;
-using Atlas.LoadTest.Engine;
+using Atlas.Tester.Engine;
 using Serilog;
 
-namespace AtlasLoadTestDesktop;
+namespace AtlasTesterDesktop;
 
 public partial class ScenarioBuilderWindow : UserControl
 {

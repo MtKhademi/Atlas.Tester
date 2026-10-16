@@ -1,8 +1,8 @@
 using Serilog;
 
-namespace Atlas.LoadTest.Engine;
+namespace Atlas.Tester.Engine;
 
-public static class LoadTestLogging
+public static class TesterLogging
 {
     public static ILogger Logger => Log.Logger;
 }

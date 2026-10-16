@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace Atlas.LoadTest.Engine;
+namespace Atlas.Tester.Engine;
 
 public sealed class OpenApiCatalog
 {
@@ -11,7 +11,7 @@ public sealed class OpenApiCatalog
 
     public static async Task<OpenApiCatalog> LoadAsync(HttpClient client, CancellationToken cancellationToken = default)
     {
-        LoadTestLogging.Logger.Information("Loading OpenAPI document from {BaseAddress}openapi/v1.json", client.BaseAddress);
+        TesterLogging.Logger.Information("Loading OpenAPI document from {BaseAddress}openapi/v1.json", client.BaseAddress);
         using var response = await client.GetAsync("/openapi/v1.json", cancellationToken);
         response.EnsureSuccessStatusCode();
         using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
@@ -26,11 +26,11 @@ public sealed class OpenApiCatalog
                 definitions.Add(new(operation.Name.ToUpperInvariant(), path.Name, $"{operation.Name.ToUpperInvariant()} {path.Name}", tag, false));
             }
         }
-        LoadTestLogging.Logger.Information("OpenAPI loaded: {OperationCount} operations", operations.Count);
+        TesterLogging.Logger.Information("OpenAPI loaded: {OperationCount} operations", operations.Count);
         return new(operations, definitions);
     }
 
-    public void Validate(LoadTestScenario scenario)
+    public void Validate(TesterScenario scenario)
     {
         var missing = scenario.Steps
             .Where(step => !operations.Contains($"{step.Method.ToUpperInvariant()} {step.Path.Split('?', 2)[0]}"))

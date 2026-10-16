@@ -1,6 +1,6 @@
-namespace Atlas.LoadTest.Engine;
+namespace Atlas.Tester.Engine;
 
-public sealed record LoadTestOptions(int Threads, int Iterations, TimeSpan RampUp, TimeSpan RequestTimeout)
+public sealed record TesterOptions(int Threads, int Iterations, TimeSpan RampUp, TimeSpan RequestTimeout)
 {
     public void Validate()
     {
@@ -12,11 +12,11 @@ public sealed record LoadTestOptions(int Threads, int Iterations, TimeSpan RampU
 }
 
 public sealed record RequestMeasurement(string Scenario, string Endpoint, bool Succeeded, int? StatusCode, TimeSpan Duration, string? Error = null);
-public sealed record LoadTestSummary(int Total, int Succeeded, int Failed, double RequestsPerSecond, TimeSpan AverageLatency, TimeSpan P95Latency, IReadOnlyDictionary<string, int> StatusCodes);
+public sealed record TesterSummary(int Total, int Succeeded, int Failed, double RequestsPerSecond, TimeSpan AverageLatency, TimeSpan P95Latency, IReadOnlyDictionary<string, int> StatusCodes);
 
-public sealed class LoadTestRunner
+public sealed class TesterRunner
 {
-    public async Task<LoadTestSummary> RunAsync(LoadTestOptions options, Func<CancellationToken, Task<RequestMeasurement>> workload, IProgress<RequestMeasurement>? progress = null, CancellationToken cancellationToken = default)
+    public async Task<TesterSummary> RunAsync(TesterOptions options, Func<CancellationToken, Task<RequestMeasurement>> workload, IProgress<RequestMeasurement>? progress = null, CancellationToken cancellationToken = default)
     {
         options.Validate();
         var measurements = new System.Collections.Concurrent.ConcurrentBag<RequestMeasurement>();
@@ -39,13 +39,13 @@ public sealed class LoadTestRunner
     }
 
     public async Task<IReadOnlyList<RequestMeasurement>> RunScenarioAsync(
-        LoadTestOptions options,
+        TesterOptions options,
         Func<CancellationToken, Task<IReadOnlyList<RequestMeasurement>>> workload,
         IProgress<RequestMeasurement>? progress = null,
         CancellationToken cancellationToken = default)
     {
         options.Validate();
-        LoadTestLogging.Logger.Information("Load test started: threads={Threads}, iterations={Iterations}, rampUp={RampUp}", options.Threads, options.Iterations, options.RampUp);
+        TesterLogging.Logger.Information("Performance test started: threads={Threads}, iterations={Iterations}, rampUp={RampUp}", options.Threads, options.Iterations, options.RampUp);
         var measurements = new System.Collections.Concurrent.ConcurrentBag<RequestMeasurement>();
         var delay = options.Threads == 1 ? options.RampUp : TimeSpan.FromTicks(options.RampUp.Ticks / options.Threads);
         await Parallel.ForEachAsync(Enumerable.Range(0, options.Threads), cancellationToken, async (worker, ct) =>
@@ -55,13 +55,13 @@ public sealed class LoadTestRunner
             {
                 foreach (var measurement in await workload(ct))
                 {
-                    LoadTestLogging.Logger.Information("Request {Scenario} {Endpoint}: success={Succeeded}, status={StatusCode}, durationMs={DurationMs}", measurement.Scenario, measurement.Endpoint, measurement.Succeeded, measurement.StatusCode, measurement.Duration.TotalMilliseconds);
+                    TesterLogging.Logger.Information("Request {Scenario} {Endpoint}: success={Succeeded}, status={StatusCode}, durationMs={DurationMs}", measurement.Scenario, measurement.Endpoint, measurement.Succeeded, measurement.StatusCode, measurement.Duration.TotalMilliseconds);
                     measurements.Add(measurement);
                     progress?.Report(measurement);
                 }
             }
         });
-        LoadTestLogging.Logger.Information("Load test completed: measurements={Count}", measurements.Count);
+        TesterLogging.Logger.Information("Performance test completed: measurements={Count}", measurements.Count);
         return measurements.ToArray();
     }
 }

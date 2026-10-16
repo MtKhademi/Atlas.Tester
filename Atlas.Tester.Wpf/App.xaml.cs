@@ -1,8 +1,8 @@
-﻿using System.Configuration;
+using System.Configuration;
 using System.Data;
 using System.Windows;
 
-namespace Atlas.LoadTest.Wpf;
+namespace Atlas.Tester.Wpf;
 
 /// <summary>
 /// Interaction logic for App.xaml

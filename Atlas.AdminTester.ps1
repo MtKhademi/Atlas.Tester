@@ -1,5 +1,5 @@
-# Local-only Windows admin/load test helper. It uses the public HTTP API and never touches the database.
-# Run with: powershell.exe -Sta -ExecutionPolicy Bypass -File .\Atlas.AdminLoadTest.ps1
+# Local-only Windows admin/performance test helper. It uses the public HTTP API and never touches the database.
+# Run with: powershell.exe -Sta -ExecutionPolicy Bypass -File .\Atlas.AdminTester.ps1
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -41,7 +41,7 @@ function Test-Target([string]$baseUrl) {
 }
 
 $form = [Windows.Forms.Form]::new()
-$form.Text = 'Atlas Admin Load Test (Development Only)'; $form.Size = [Drawing.Size]::new(760, 620)
+$form.Text = 'Atlas Admin Performance Test (Development Only)'; $form.Size = [Drawing.Size]::new(760, 620)
 $form.StartPosition = 'CenterScreen'
 
 $form.Controls.Add((New-Label 'API URL' 20 20)); $baseUrl = New-TextBox 'http://localhost:5000' 150 16 430; $form.Controls.Add($baseUrl)

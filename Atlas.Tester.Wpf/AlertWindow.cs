@@ -5,7 +5,7 @@ using Wpf.Ui.Controls;
 using WpfButton = Wpf.Ui.Controls.Button;
 using WpfSymbolIcon = Wpf.Ui.Controls.SymbolIcon;
 
-namespace AtlasLoadTestDesktop;
+namespace AtlasTesterDesktop;
 
 internal static class AlertWindow
 {

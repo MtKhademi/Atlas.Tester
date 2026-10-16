@@ -1,8 +1,8 @@
-using Atlas.LoadTest.Engine;
+using Atlas.Tester.Engine;
 
-namespace Atlas.LoadTest.Engine.Tests;
+namespace Atlas.Tester.Engine.Tests;
 
-public sealed class LoadTestEngineTests
+public sealed class TesterEngineTests
 {
     [Fact]
     public void Rejects_remote_targets_without_explicit_opt_in()
@@ -21,18 +21,18 @@ public sealed class LoadTestEngineTests
     [Fact]
     public async Task Writes_json_csv_and_html_reports()
     {
-        var directory = Path.Combine(Path.GetTempPath(), "atlas-loadtest-" + Guid.NewGuid().ToString("N"));
+        var directory = Path.Combine(Path.GetTempPath(), "atlas-tester-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         try
         {
-            var report = new LoadTestReport(DateTimeOffset.UtcNow, [new("user", "/health", 10, 10, 0, 12.5, 18.2)]);
-            await LoadTestReportWriter.WriteJsonAsync(report, Path.Combine(directory, "report.json"));
-            await LoadTestReportWriter.WriteCsvAsync(report, Path.Combine(directory, "report.csv"));
-            await LoadTestReportWriter.WriteHtmlAsync(report, Path.Combine(directory, "report.html"));
+            var report = new TesterReport(DateTimeOffset.UtcNow, [new("user", "/health", 10, 10, 0, 12.5, 18.2)]);
+            await TesterReportWriter.WriteJsonAsync(report, Path.Combine(directory, "report.json"));
+            await TesterReportWriter.WriteCsvAsync(report, Path.Combine(directory, "report.csv"));
+            await TesterReportWriter.WriteHtmlAsync(report, Path.Combine(directory, "report.html"));
 
             Assert.Contains("/health", await File.ReadAllTextAsync(Path.Combine(directory, "report.json")));
             Assert.Contains("Scenario,Endpoint,Requests", await File.ReadAllTextAsync(Path.Combine(directory, "report.csv")));
-            Assert.Contains("Atlas LoadTest Report", await File.ReadAllTextAsync(Path.Combine(directory, "report.html")));
+            Assert.Contains("Atlas Tester Report", await File.ReadAllTextAsync(Path.Combine(directory, "report.html")));
         }
         finally { Directory.Delete(directory, true); }
     }
@@ -40,7 +40,7 @@ public sealed class LoadTestEngineTests
     [Fact]
     public async Task Runs_requested_work_and_aggregates_metrics()
     {
-        var runner = new LoadTestRunner();
+        var runner = new TesterRunner();
         var result = await runner.RunAsync(new(4, 3, TimeSpan.Zero, TimeSpan.FromSeconds(1)), _ => Task.FromResult(new RequestMeasurement("mock", "/health", true, 200, TimeSpan.FromMilliseconds(10))));
 
         Assert.Equal(12, result.Total);
@@ -55,7 +55,7 @@ public sealed class LoadTestEngineTests
     {
         var count = 0;
         var progress = new InlineProgress<RequestMeasurement>(_ => count++);
-        var runner = new LoadTestRunner();
+        var runner = new TesterRunner();
 
         await runner.RunAsync(new(2, 2, TimeSpan.Zero, TimeSpan.FromSeconds(1)), _ => Task.FromResult(new RequestMeasurement("mock", "/health", true, 200, TimeSpan.FromMilliseconds(1))), progress);
         Assert.Equal(4, count);
@@ -65,7 +65,7 @@ public sealed class LoadTestEngineTests
     public async Task Supports_cancellation()
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(30));
-        var runner = new LoadTestRunner();
+        var runner = new TesterRunner();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => runner.RunAsync(new(10, 100, TimeSpan.Zero, TimeSpan.FromSeconds(1)), async ct =>
         {
@@ -78,7 +78,7 @@ public sealed class LoadTestEngineTests
     public async Task Applies_ramp_up_before_each_worker()
     {
         var starts = new System.Collections.Concurrent.ConcurrentBag<DateTimeOffset>();
-        var runner = new LoadTestRunner();
+        var runner = new TesterRunner();
         await runner.RunAsync(new(2, 1, TimeSpan.FromMilliseconds(80), TimeSpan.FromSeconds(1)), _ =>
         {
             starts.Add(DateTimeOffset.UtcNow);

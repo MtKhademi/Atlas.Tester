@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace Atlas.LoadTest.Engine;
+namespace Atlas.Tester.Engine;
 
 public sealed record ScenarioDefinition(string Name, string Description, IReadOnlyList<ScenarioNodeDefinition> Steps);
 public sealed record ScenarioNodeDefinition(string Id, string Method, string Path, string DisplayName, bool RequiresAuthentication);
@@ -20,7 +20,7 @@ public sealed class ScenarioStore(string directory)
         if (string.IsNullOrWhiteSpace(safeName)) throw new ArgumentException("Scenario name does not contain a valid file name.", nameof(scenario));
         var path = Path.Combine(DirectoryPath, $"{safeName}.json");
         await File.WriteAllTextAsync(path, JsonSerializer.Serialize(scenario, JsonOptions), cancellationToken);
-        LoadTestLogging.Logger.Information("Scenario stored by engine: {Path}", path);
+        TesterLogging.Logger.Information("Scenario stored by engine: {Path}", path);
         return path;
     }
 

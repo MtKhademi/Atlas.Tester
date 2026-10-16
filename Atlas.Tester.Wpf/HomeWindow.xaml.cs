@@ -3,7 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 
-namespace AtlasLoadTestDesktop;
+namespace AtlasTesterDesktop;
 
 public partial class HomeWindow : Window
 {
@@ -19,7 +19,7 @@ public partial class HomeWindow : Window
 
     private void Reports_Click(object sender, RoutedEventArgs e)
     {
-        AlertWindow.Show(this, "Reports", "Run a load test first to generate a report.");
+        AlertWindow.Show(this, "Reports", "Run a performance test first to generate a report.");
     }
 
     private void ConfigureSidebar()
@@ -60,7 +60,7 @@ public partial class HomeWindow : Window
             button.ToolTip = button.Tag?.ToString() switch
             {
                 "Home" => "Home",
-                "Tests" => "Load test",
+                "Tests" => "Performance test",
                 "Scenarios" => "Scenario builder",
                 _ => null
             };
@@ -89,9 +89,9 @@ public partial class HomeWindow : Window
         SetNavigationState(page is MainWindow ? "Tests" : "Scenarios");
         HideInnerHeader(page);
         PageContent.Background = new SolidColorBrush(Color.FromRgb(17, 21, 27));
-        if (page is MainWindow loadTest && loadTest.Content is Grid loadTestRoot)
+        if (page is MainWindow testPage && testPage.Content is Grid testRoot)
         {
-            loadTestRoot.Background = PageContent.Background;
+            testRoot.Background = PageContent.Background;
         }
         else if (page is ScenarioBuilderWindow scenario && scenario.Content is Grid scenarioRoot)
         {
@@ -106,7 +106,7 @@ public partial class HomeWindow : Window
         var pageHeader = new StackPanel { Margin = new Thickness(0, 0, 0, 22) };
         pageHeader.Children.Add(new TextBlock
         {
-            Text = page is MainWindow ? "ATLAS  /  LOAD TEST" : "ATLAS  /  SCENARIO BUILDER",
+            Text = page is MainWindow ? "ATLAS  /  TESTER" : "ATLAS  /  SCENARIO BUILDER",
             Foreground = new SolidColorBrush(Color.FromRgb(85, 181, 255)),
             FontSize = 14,
             FontWeight = FontWeights.Bold
@@ -115,7 +115,7 @@ public partial class HomeWindow : Window
         {
             pageHeader.Children.Add(new TextBlock
             {
-                Text = "Run a load test",
+                Text = "Run a performance test",
                 Foreground = Brushes.White,
                 FontSize = 32,
                 FontWeight = FontWeights.SemiBold,
@@ -175,7 +175,7 @@ public partial class HomeWindow : Window
 
     private void HideInnerHeader(object page)
     {
-        if (page is MainWindow loadTest && loadTest.Content is Grid root && root.RowDefinitions.Count > 0 && root.Children.Count > 0)
+        if (page is MainWindow testPage && testPage.Content is Grid root && root.RowDefinitions.Count > 0 && root.Children.Count > 0)
         {
             root.RowDefinitions[0].Height = new GridLength(0);
             root.Children[0].Visibility = Visibility.Collapsed;

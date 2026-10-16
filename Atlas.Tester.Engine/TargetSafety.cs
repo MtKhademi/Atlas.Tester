@@ -1,4 +1,4 @@
-namespace Atlas.LoadTest.Engine;
+namespace Atlas.Tester.Engine;
 
 public enum TargetKind { Localhost, Remote }
 

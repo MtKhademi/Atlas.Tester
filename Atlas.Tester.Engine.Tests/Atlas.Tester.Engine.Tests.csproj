@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -19,7 +19,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Atlas.LoadTest.Engine\Atlas.LoadTest.Engine.csproj" />
+    <ProjectReference Include="..\Atlas.Tester.Engine\Atlas.Tester.Engine.csproj" />
   </ItemGroup>
 
 </Project>
