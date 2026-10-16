@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Shapes;
 using System.ComponentModel;
 using System.Windows.Data;
 using Atlas.Tester.Engine;
@@ -41,25 +42,92 @@ public partial class ScenarioBuilderWindow : UserControl
     {
         if (!e.Data.GetDataPresent(typeof(OpenApiOperation))) return;
         var operation = (OpenApiOperation)e.Data.GetData(typeof(OpenApiOperation))!;
-        var node = new ScenarioNodeDefinition(Guid.NewGuid().ToString("N"), operation.Method, operation.Path, operation.DisplayName, operation.RequiresAuthentication); nodes.Add(node); RenderNode(node); UpdateWorkflowSummary();
+        nodes.Add(new ScenarioNodeDefinition(Guid.NewGuid().ToString("N"), operation.Method, operation.Path, operation.DisplayName, operation.RequiresAuthentication));
+        RenderWorkflow();
+        UpdateWorkflowSummary();
     }
 
-    private void RenderNode(ScenarioNodeDefinition node)
+    private void RenderWorkflow()
     {
-        var card = new Border { Width = 300, Padding = new Thickness(16), Margin = new Thickness(18), Background = Brushes.White, BorderBrush = new SolidColorBrush(Color.FromRgb(20, 152, 232)), BorderThickness = new Thickness(2), CornerRadius = new CornerRadius(14) };
-        var stack = new StackPanel(); stack.Children.Add(new TextBlock { Text = node.Method, Foreground = new SolidColorBrush(Color.FromRgb(20, 152, 232)), FontWeight = FontWeights.Bold }); stack.Children.Add(new TextBlock { Text = node.DisplayName, FontSize = 16, FontWeight = FontWeights.Bold, Foreground = new SolidColorBrush(Color.FromRgb(16, 36, 62)), Margin = new Thickness(0, 6, 0, 4) }); stack.Children.Add(new TextBlock { Text = node.Path, TextWrapping = TextWrapping.Wrap, Foreground = new SolidColorBrush(Color.FromRgb(86, 112, 135)) });
-        card.Child = stack; Canvas.SetLeft(card, 20); Canvas.SetTop(card, (nodes.Count - 1) * 125 + 20); WorkflowCanvas.Children.Add(card);
+        WorkflowCanvas.Children.Clear();
+        const double left = 28;
+        const double cardWidth = 340;
+        const double cardHeight = 62;
+        const double stepGap = 34;
+
+        for (var index = 0; index < nodes.Count; index++)
+        {
+            var node = nodes[index];
+            var top = 22 + index * (cardHeight + stepGap);
+            if (index > 0)
+            {
+                WorkflowCanvas.Children.Add(new Line
+                {
+                    X1 = left + cardWidth / 2,
+                    X2 = left + cardWidth / 2,
+                    Y1 = top - stepGap + 2,
+                    Y2 = top - 2,
+                    Stroke = new SolidColorBrush(Color.FromRgb(91, 126, 151)),
+                    StrokeThickness = 2,
+                    SnapsToDevicePixels = true
+                });
+                WorkflowCanvas.Children.Add(new Polygon
+                {
+                    Points = new PointCollection([new Point(left + cardWidth / 2 - 5, top - 8), new Point(left + cardWidth / 2 + 5, top - 8), new Point(left + cardWidth / 2, top - 1)]),
+                    Fill = new SolidColorBrush(Color.FromRgb(91, 126, 151))
+                });
+            }
+
+            var accent = MethodColor(node.Method);
+            var card = new Border
+            {
+                Width = cardWidth,
+                Height = cardHeight,
+                Padding = new Thickness(14, 10, 16, 10),
+                Background = new SolidColorBrush(BlendWithSurface(accent)),
+                BorderBrush = new SolidColorBrush(accent),
+                BorderThickness = new Thickness(1.8),
+                CornerRadius = new CornerRadius(9)
+            };
+            card.Child = new TextBlock
+            {
+                Text = node.Path,
+                Foreground = new SolidColorBrush(Color.FromRgb(245, 248, 252)),
+                FontSize = 13,
+                FontWeight = FontWeights.SemiBold,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            Canvas.SetLeft(card, left); Canvas.SetTop(card, top); WorkflowCanvas.Children.Add(card);
+        }
+
+        WorkflowCanvas.Height = Math.Max(450, 44 + nodes.Count * (cardHeight + stepGap));
     }
+
+    private static Color MethodColor(string method) => method.ToUpperInvariant() switch
+    {
+        "GET" => Color.FromRgb(218, 169, 55),
+        "POST" => Color.FromRgb(39, 154, 104),
+        "PUT" => Color.FromRgb(55, 132, 214),
+        "PATCH" => Color.FromRgb(155, 91, 196),
+        "DELETE" => Color.FromRgb(194, 75, 91),
+        _ => Color.FromRgb(91, 126, 151)
+    };
+
+    private static Color BlendWithSurface(Color accent) => Color.FromRgb(
+        (byte)((accent.R + 53) / 2),
+        (byte)((accent.G + 55) / 2),
+        (byte)((accent.B + 70) / 2));
 
     private async void Save_Click(object sender, RoutedEventArgs e)
     {
         Log.Information("Scenario save requested: name={Name}, nodes={NodeCount}", NameBox.Text, nodes.Count);
         if (string.IsNullOrWhiteSpace(NameBox.Text)) { Log.Warning("Scenario save skipped because scenario name is empty"); AlertWindow.Show(this, "Scenario name required", "Enter a name before saving the scenario.", true); NameBox.Focus(); return; }
         if (nodes.Count == 0) { Log.Warning("Scenario save skipped because no nodes were added"); AlertWindow.Show(this, "Empty scenario", "Drag at least one API into the workflow before saving.", true); return; }
-        var store = new ScenarioStore(Path.Combine(AppContext.BaseDirectory, "scenarios")); var path = await store.SaveAsync(new ScenarioDefinition(NameBox.Text, DescriptionBox.Text, nodes)); Log.Information("Scenario saved: path={Path}, bytes={Bytes}", path, new FileInfo(path).Length); AlertWindow.Show(this, "Scenario saved", $"The scenario was saved successfully:\n{path}");
+        var store = new ScenarioStore(System.IO.Path.Combine(AppContext.BaseDirectory, "scenarios")); var path = await store.SaveAsync(new ScenarioDefinition(NameBox.Text, DescriptionBox.Text, nodes)); Log.Information("Scenario saved: path={Path}, bytes={Bytes}", path, new FileInfo(path).Length); AlertWindow.Show(this, "Scenario saved", $"The scenario was saved successfully:\n{path}");
     }
 
-    private void Clear_Click(object sender, RoutedEventArgs e) { nodes.Clear(); WorkflowCanvas.Children.Clear(); UpdateWorkflowSummary(); }
+    private void Clear_Click(object sender, RoutedEventArgs e) { nodes.Clear(); WorkflowCanvas.Children.Clear(); WorkflowCanvas.Height = 450; UpdateWorkflowSummary(); }
 
     private void UpdateWorkflowSummary()
     {
