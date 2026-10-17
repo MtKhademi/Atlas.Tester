@@ -99,7 +99,10 @@ public sealed class TesterEngineTests
             var path = await store.SaveAsync(new ScenarioDefinition("market-assets", "Read market assets", [new("step-1", "GET", "/oracle/api/market/assets", "Market assets", true)]));
             var loaded = await store.LoadAsync(path);
             Assert.Equal("market-assets", loaded.Name);
+            Assert.Equal(ScenarioDefinition.CurrentVersion, loaded.Version);
             Assert.Single(loaded.Steps);
+            Assert.Equal("GET", loaded.Steps[0].Request.Method);
+            Assert.Equal("/oracle/api/market/assets", loaded.Steps[0].Request.Path);
             Assert.Single(store.List());
         }
         finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
@@ -140,6 +143,66 @@ public sealed class TesterEngineTests
             await store.SaveAsync(new ScenarioDefinition("same-name", "New", [new("1", "GET", "/new", "New", false)]));
             var saved = store.List(); var loaded = await store.LoadAsync(saved.Single().Path);
             Assert.Single(saved); Assert.Equal("New", loaded.Description); Assert.Equal("/new", loaded.Steps[0].Path);
+        }
+        finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+    }
+
+    [Fact]
+    public async Task Scenario_store_loads_legacy_json_as_version_one()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "atlas-scenarios-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var path = Path.Combine(directory, "legacy.json");
+            await File.WriteAllTextAsync(path, """
+                {
+                  "Name": "legacy-login",
+                  "Description": "Legacy format",
+                  "Steps": [
+                    {
+                      "Id": "login",
+                      "Method": "POST",
+                      "Path": "/auth/login",
+                      "DisplayName": "Login",
+                      "RequiresAuthentication": false
+                    }
+                  ]
+                }
+                """);
+
+            var scenario = await new ScenarioStore(directory).LoadAsync(path);
+
+            Assert.Equal(1, scenario.Version);
+            Assert.Equal("POST", scenario.Steps[0].Request.Method);
+            Assert.Equal("/auth/login", scenario.Steps[0].Request.Path);
+            Assert.Empty(scenario.Steps[0].Captures);
+            Assert.Empty(scenario.Steps[0].Assertions);
+        }
+        finally { Directory.Delete(directory, true); }
+    }
+
+    [Fact]
+    public async Task Scenario_store_persists_node_request_captures_and_assertions()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "atlas-scenarios-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var node = new ScenarioNodeDefinition("login", "POST", "/auth/login", "Login", false)
+            {
+                Request = new ScenarioRequestDefinition("POST", "/auth/login", new Dictionary<string, string> { ["X-Tenant"] = "atlas" }, BodyJson: "{\"email\":\"{{adminEmail}}\"}"),
+                Captures = [new ScenarioCaptureDefinition("accessToken", "$.accessToken")],
+                Assertions = [new ScenarioAssertionDefinition("statusCode", "200"), new ScenarioAssertionDefinition("jsonPathExists", JsonPath: "$.accessToken")]
+            };
+            var store = new ScenarioStore(directory);
+            var path = await store.SaveAsync(new ScenarioDefinition("super-admin-login", "Logs in", [node]));
+            var loaded = await store.LoadAsync(path);
+
+            Assert.Equal(ScenarioDefinition.CurrentVersion, loaded.Version);
+            Assert.Equal("{\"email\":\"{{adminEmail}}\"}", loaded.Steps[0].Request.BodyJson);
+            Assert.Equal("atlas", loaded.Steps[0].Request.Headers!["X-Tenant"]);
+            Assert.Equal(new ScenarioCaptureDefinition("accessToken", "$.accessToken"), Assert.Single(loaded.Steps[0].Captures));
+            Assert.Equal("statusCode", loaded.Steps[0].Assertions[0].Type);
         }
         finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
     }
