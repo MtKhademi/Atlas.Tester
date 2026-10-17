@@ -230,9 +230,60 @@ public sealed class TesterEngineTests
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
     }
+
+    [Fact]
+    public async Task Scenario_executor_applies_request_templates_and_variables_from_a_prior_step()
+    {
+        var handler = new RecordingHandler(request => request.RequestUri!.AbsolutePath == "/login"
+            ? new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new System.Net.Http.StringContent("{\"accessToken\":\"token-123\"}") }
+            : new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.OK));
+        using var client = new HttpClient(handler) { BaseAddress = new Uri("https://atlas.test") };
+        var login = new ScenarioStep("Login", "POST", "/login", false, new ScenarioRequestDefinition("POST", "/login", new Dictionary<string, string> { ["X-User"] = "{{emailOrPhone}}" }, BodyJson: "{\"password\":\"{{password}}\"}"));
+        var read = new ScenarioStep("Read profile", "GET", "/profiles/{token}", true, new ScenarioRequestDefinition("GET", "/profiles/{token}", new Dictionary<string, string> { ["X-Token"] = "{{accessToken}}" }, new Dictionary<string, string> { ["source"] = "{{accessToken}}" }, new Dictionary<string, string> { ["token"] = "{{accessToken}}" }));
+
+        var results = await new HttpScenarioExecutor(client, new TesterScenario("template", "Template", [login, read]), new ScenarioCredentials("admin@atlas.test", "secret")).RunAsync();
+
+        Assert.All(results, result => Assert.True(result.Succeeded));
+        Assert.Equal("{\"password\":\"secret\"}", handler.Requests[0].Body);
+        Assert.Equal("admin@atlas.test", handler.Requests[0].Headers["X-User"]);
+        Assert.Equal("/profiles/token-123?source=token-123", handler.Requests[1].PathAndQuery);
+        Assert.Equal("token-123", handler.Requests[1].Headers["X-Token"]);
+        Assert.Equal("Bearer token-123", handler.Requests[1].Headers["Authorization"]);
+    }
+
+    [Fact]
+    public async Task Scenario_executor_reports_an_unresolved_variable_without_sending_a_request()
+    {
+        var handler = new RecordingHandler(_ => new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.OK));
+        using var client = new HttpClient(handler) { BaseAddress = new Uri("https://atlas.test") };
+        var step = new ScenarioStep("Get profile", "GET", "/profiles", false, new ScenarioRequestDefinition("GET", "/profiles", Query: new Dictionary<string, string> { ["id"] = "{{missingId}}" }));
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => new HttpScenarioExecutor(client, new TesterScenario("missing", "Missing", [step]), new ScenarioCredentials("email", "password")).RunAsync());
+
+        Assert.Contains("missingId", error.Message);
+        Assert.Empty(handler.Requests);
+    }
 }
 
 file sealed class InlineProgress<T>(Action<T> callback) : IProgress<T>
 {
     public void Report(T value) => callback(value);
 }
+
+file sealed class RecordingHandler(Func<HttpRequestMessage, HttpResponseMessage> responseFactory) : HttpMessageHandler
+{
+    public List<RecordedRequest> Requests { get; } = [];
+
+    protected override HttpResponseMessage Send(HttpRequestMessage request, CancellationToken cancellationToken) => SendAsync(request, cancellationToken).GetAwaiter().GetResult();
+
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        var headers = request.Headers.ToDictionary(header => header.Key, header => string.Join(",", header.Value), StringComparer.OrdinalIgnoreCase);
+        if (request.Content is not null)
+            foreach (var header in request.Content.Headers) headers[header.Key] = string.Join(",", header.Value);
+        Requests.Add(new RecordedRequest(request.RequestUri!.PathAndQuery, headers, request.Content is null ? null : await request.Content.ReadAsStringAsync(cancellationToken)));
+        return responseFactory(request);
+    }
+}
+
+file sealed record RecordedRequest(string PathAndQuery, IReadOnlyDictionary<string, string> Headers, string? Body);

@@ -15,7 +15,7 @@ This file is the source of truth for the ordered Atlas Tester delivery queue.
 | ---: | --- | --- | --- | --- |
 | 1 | `SCN-JSON-01` | `done` | — | [Versioned scenario JSON model](scenario-json-model.md) |
 | 2 | `CLIENT-STORAGE-08` | `done` | `SCN-JSON-01` | [Centralize client-side storage](client-storage.md) |
-| 3 | `SCN-REQUEST-02` | `planned` | `SCN-JSON-01`, `CLIENT-STORAGE-08` | [Request templates and variable resolution](scenario-request-templates.md) |
+| 3 | `SCN-REQUEST-02` | `done` | `SCN-JSON-01`, `CLIENT-STORAGE-08` | [Request templates and variable resolution](scenario-request-templates.md) |
 | 4 | `SCN-CAPTURE-03` | `planned` | `SCN-REQUEST-02` | [Response capture](scenario-response-capture.md) |
 | 5 | `SCN-ASSERT-04` | `planned` | `SCN-CAPTURE-03` | [Assertions and node outcomes](scenario-assertions.md) |
 | 6 | `SCN-BUILDER-05` | `planned` | `SCN-ASSERT-04` | [Scenario Builder node properties](scenario-builder-properties.md) |

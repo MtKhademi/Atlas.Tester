@@ -196,7 +196,7 @@ public partial class MainWindow : UserControl
         Log.Information("Loading saved scenario file: {Path}", path);
         var definition = await new ScenarioStore(Path.GetDirectoryName(path)!).LoadAsync(path, cancellationToken);
         Log.Information("Saved scenario file loaded: name={Name}, steps={StepCount}", definition.Name, definition.Steps.Count);
-        return new TesterScenario($"saved:{definition.Name}", definition.Name, definition.Steps.Select(x => new ScenarioStep(x.DisplayName, x.Method, x.Path, x.RequiresAuthentication)).ToArray());
+        return new TesterScenario($"saved:{definition.Name}", definition.Name, definition.Steps.Select(x => new ScenarioStep(x.DisplayName, x.Method, x.Path, x.RequiresAuthentication, x.Request)).ToArray());
     }
 
     private async void ScenarioBuilder_Click(object sender, RoutedEventArgs e)
