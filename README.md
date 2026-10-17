@@ -20,7 +20,7 @@ Atlas.Tester is a standalone Windows testering toolkit for HTTP APIs. It include
 dotnet run --project .\Atlas.Tester.Wpf\Atlas.Tester.Wpf.csproj
 ```
 
-All client-side data is stored under `%LocalAppData%\AtlasTester`: `projects`, `catalogs`, `scenarios`, and `reports`. Data from older application-output and `%AppData%\AtlasTester` locations is copied into this root on startup; the original files are left untouched.
+All client-side data is stored beside the WPF executable: `projects`, `catalogs`, `scenarios`, and `reports`. Data from older application-output, `%AppData%\AtlasTester`, and `%LocalAppData%\AtlasTester` locations is copied into these folders on startup; the original files are left untouched.
 
 ## Test the engine
 

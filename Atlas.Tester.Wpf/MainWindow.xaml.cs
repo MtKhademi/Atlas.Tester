@@ -91,14 +91,16 @@ public partial class MainWindow : UserControl
             RequestsValue.Text = "0"; SuccessValue.Text = "0.00%"; LatencyValue.Text = "—"; MockProgress.Value = 0; ChartStatus.Text = $"Running {scenario.DisplayName} · 0 / {expectedRequests} requests";
             var measurements = await runner.RunScenarioAsync(options, ct => new HttpScenarioExecutor(client, scenario, credentials).RunAsync(ct), new Progress<RequestMeasurement>(UpdateLiveMetrics), cancellation!.Token);
             var rows = measurements.GroupBy(x => new { x.Scenario, x.Endpoint }).Select(group => { var values = group.Select(x => x.Duration).OrderBy(x => x).ToArray(); return new ReportRow(group.Key.Scenario, group.Key.Endpoint, values.Length, group.Count(x => x.Succeeded), group.Count(x => !x.Succeeded), values.Average(x => x.TotalMilliseconds), values[Math.Min(values.Length - 1, (int)Math.Ceiling(values.Length * .95) - 1)].TotalMilliseconds); }).ToArray();
-            var output = Path.Combine(ClientDataPaths.ReportsDirectory, "latest"); Directory.CreateDirectory(output); var report = new TesterReport(DateTimeOffset.UtcNow, rows);
+            var output = Path.Combine(ClientDataPaths.ReportsDirectory, "latest"); Directory.CreateDirectory(output);
+            var details = measurements.Select(x => new RequestReportDetail(x.Scenario, x.Endpoint, x.Method, x.RequestUrl, x.RequestBody, x.StatusCode, x.ResponseBody, x.Error, x.Duration.TotalMilliseconds, x.Succeeded)).ToArray();
+            var report = new TesterReport(DateTimeOffset.UtcNow, rows, details);
             latestReportDirectory = output;
             OpenReportButton?.SetValue(IsEnabledProperty, true);
             (OpenReportButton?.Tag as Button)?.SetValue(IsEnabledProperty, true);
-            await TesterReportWriter.WriteJsonAsync(report, Path.Combine(output, "report.json")); await TesterReportWriter.WriteCsvAsync(report, Path.Combine(output, "report.csv")); await TesterReportWriter.WriteHtmlAsync(report, Path.Combine(output, "report.html"));
+            await TesterReportWriter.WriteJsonAsync(report, Path.Combine(output, "report.json")); await TesterReportWriter.WriteCsvAsync(report, Path.Combine(output, "report.csv")); await TesterReportWriter.WriteRequestCsvAsync(report, Path.Combine(output, "requests.csv")); await TesterReportWriter.WriteHtmlAsync(report, Path.Combine(output, "report.html"));
             var succeeded = measurements.Count(x => x.Succeeded); var failed = measurements.Count - succeeded; var elapsed = runClock?.Elapsed.TotalSeconds ?? 0; var orderedLatencies = measurements.Select(x => x.Duration).OrderBy(x => x).ToArray(); var p95 = orderedLatencies[Math.Min(orderedLatencies.Length - 1, (int)Math.Ceiling(orderedLatencies.Length * .95) - 1)]; var errors = measurements.Where(x => !x.Succeeded).GroupBy(x => x.StatusCode?.ToString() ?? "network").OrderByDescending(x => x.Count()).Select(x => $"{x.Key}: {x.Count()}");
             RequestsValue.Text = $"{(elapsed <= 0 ? 0 : measurements.Count / elapsed):0.0}"; RequestsHint.Text = $"{measurements.Count} total requests"; SuccessValue.Text = $"{(double)succeeded / measurements.Count * 100:0.00}%"; SuccessHint.Text = $"{succeeded} succeeded · {failed} failed"; LatencyValue.Text = $"{p95.TotalMilliseconds:0} ms"; LatencyHint.Text = "P95 response time";
-            ChartStatus.Text = "Real HTTP scenario completed"; ReportStatus.Text = "Detailed result"; OutputStatus.Text = $"Reports: {output} · JSON / CSV / HTML"; ShowReportCard(scenario.DisplayName, measurements.Count, succeeded, failed, elapsed, p95, errors);
+            ChartStatus.Text = "Real HTTP scenario completed"; ReportStatus.Text = "Detailed result"; OutputStatus.Text = $"Reports: {output} · request/response details in JSON, CSV and HTML"; ShowReportCard(scenario.DisplayName, measurements.Count, succeeded, failed, elapsed, p95, errors);
         }
         catch (OperationCanceledException) { Log.Warning("Performance test cancelled"); ChartStatus.Text = "Test stopped · cancelled by user"; ReportStatus.Text = "The running HTTP test was cancelled."; }
         catch (Exception ex) { Log.Error(ex, "Performance test failed"); ChartStatus.Text = "Test failed"; ReportStatus.Text = ex.Message; }
@@ -196,7 +198,7 @@ public partial class MainWindow : UserControl
         Log.Information("Loading saved scenario file: {Path}", path);
         var definition = await new ScenarioStore(Path.GetDirectoryName(path)!).LoadAsync(path, cancellationToken);
         Log.Information("Saved scenario file loaded: name={Name}, steps={StepCount}", definition.Name, definition.Steps.Count);
-        return new TesterScenario($"saved:{definition.Name}", definition.Name, definition.Steps.Select(x => new ScenarioStep(x.DisplayName, x.Method, x.Path, x.RequiresAuthentication, x.Request)).ToArray());
+        return new TesterScenario($"saved:{definition.Name}", definition.Name, definition.Steps.Select(x => new ScenarioStep(x.DisplayName, x.Method, x.Path, x.RequiresAuthentication, x.Request, x.Captures)).ToArray());
     }
 
     private async void ScenarioBuilder_Click(object sender, RoutedEventArgs e)

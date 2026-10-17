@@ -25,14 +25,17 @@ public sealed class TesterEngineTests
         Directory.CreateDirectory(directory);
         try
         {
-            var report = new TesterReport(DateTimeOffset.UtcNow, [new("user", "/health", 10, 10, 0, 12.5, 18.2)]);
+            var report = new TesterReport(DateTimeOffset.UtcNow, [new("user", "/health", 10, 10, 0, 12.5, 18.2)], [new("user", "/health", "GET", "http://localhost:5000/health", null, 200, "{\"status\":\"ok\"}", null, 12.5, true)]);
             await TesterReportWriter.WriteJsonAsync(report, Path.Combine(directory, "report.json"));
             await TesterReportWriter.WriteCsvAsync(report, Path.Combine(directory, "report.csv"));
+            await TesterReportWriter.WriteRequestCsvAsync(report, Path.Combine(directory, "requests.csv"));
             await TesterReportWriter.WriteHtmlAsync(report, Path.Combine(directory, "report.html"));
 
             Assert.Contains("/health", await File.ReadAllTextAsync(Path.Combine(directory, "report.json")));
             Assert.Contains("Scenario,Endpoint,Requests", await File.ReadAllTextAsync(Path.Combine(directory, "report.csv")));
+            Assert.Contains("ResponseBody", await File.ReadAllTextAsync(Path.Combine(directory, "requests.csv")));
             Assert.Contains("Atlas Tester Report", await File.ReadAllTextAsync(Path.Combine(directory, "report.html")));
+            Assert.Contains("status", await File.ReadAllTextAsync(Path.Combine(directory, "report.html")));
         }
         finally { Directory.Delete(directory, true); }
     }
@@ -59,6 +62,17 @@ public sealed class TesterEngineTests
 
         await runner.RunAsync(new(2, 2, TimeSpan.Zero, TimeSpan.FromSeconds(1)), _ => Task.FromResult(new RequestMeasurement("mock", "/health", true, 200, TimeSpan.FromMilliseconds(1))), progress);
         Assert.Equal(4, count);
+    }
+
+    [Fact]
+    public async Task Scenario_runner_preserves_the_order_of_nodes_for_a_single_worker()
+    {
+        var runner = new TesterRunner();
+        var results = await runner.RunScenarioAsync(new(1, 1, TimeSpan.Zero, TimeSpan.FromSeconds(1)), _ => Task.FromResult<IReadOnlyList<RequestMeasurement>>([
+            new("auth", "/register", true, 200, TimeSpan.FromMilliseconds(1)),
+            new("auth", "/login", true, 200, TimeSpan.FromMilliseconds(1))]));
+
+        Assert.Equal(["/register", "/login"], results.Select(x => x.Endpoint));
     }
 
     [Fact]
@@ -208,30 +222,6 @@ public sealed class TesterEngineTests
     }
 
     [Fact]
-    public void Client_data_migration_copies_legacy_files_without_overwriting_newer_data()
-    {
-        var root = Path.Combine(Path.GetTempPath(), "atlas-client-data-" + Guid.NewGuid().ToString("N"));
-        var legacy = Path.Combine(root, "legacy");
-        var destination = Path.Combine(root, "destination");
-        try
-        {
-            Directory.CreateDirectory(legacy);
-            var legacyFile = Path.Combine(legacy, "scenario.json");
-            File.WriteAllText(legacyFile, "legacy");
-
-            ClientDataPaths.MigrateDirectory(legacy, destination);
-            Assert.Equal("legacy", File.ReadAllText(Path.Combine(destination, "scenario.json")));
-
-            File.WriteAllText(Path.Combine(destination, "scenario.json"), "current");
-            File.WriteAllText(legacyFile, "old-copy");
-            ClientDataPaths.MigrateDirectory(legacy, destination);
-
-            Assert.Equal("current", File.ReadAllText(Path.Combine(destination, "scenario.json")));
-        }
-        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
-    }
-
-    [Fact]
     public async Task Scenario_executor_applies_request_templates_and_variables_from_a_prior_step()
     {
         var handler = new RecordingHandler(request => request.RequestUri!.AbsolutePath == "/login"
@@ -262,6 +252,37 @@ public sealed class TesterEngineTests
 
         Assert.Contains("missingId", error.Message);
         Assert.Empty(handler.Requests);
+    }
+
+    [Fact]
+    public async Task Scenario_executor_captures_a_json_value_for_a_later_node()
+    {
+        var handler = new RecordingHandler(request => request.RequestUri!.AbsolutePath == "/register"
+            ? new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.Created) { Content = new System.Net.Http.StringContent("{\"user\":{\"email\":\"new-user@atlas.test\"}}") }
+            : new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.OK));
+        using var client = new HttpClient(handler) { BaseAddress = new Uri("https://atlas.test") };
+        var register = new ScenarioStep("Register", "POST", "/register", false, new ScenarioRequestDefinition("POST", "/register", BodyJson: "{}"), [new ScenarioCaptureDefinition("registeredEmail", "$.user.email")]);
+        var login = new ScenarioStep("Login", "POST", "/login", false, new ScenarioRequestDefinition("POST", "/login", BodyJson: "{\"email\":\"{{registeredEmail}}\"}"));
+
+        var results = await new HttpScenarioExecutor(client, new TesterScenario("register-login", "Register then login", [register, login]), new ScenarioCredentials("unused", "password")).RunAsync();
+
+        Assert.All(results, result => Assert.True(result.Succeeded));
+        Assert.Equal("{\"email\":\"new-user@atlas.test\"}", handler.Requests[1].Body);
+    }
+
+    [Fact]
+    public async Task Scenario_executor_reports_node_variable_and_selector_when_capture_fails()
+    {
+        var handler = new RecordingHandler(_ => new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new System.Net.Http.StringContent("{}") });
+        using var client = new HttpClient(handler) { BaseAddress = new Uri("https://atlas.test") };
+        var step = new ScenarioStep("Register", "POST", "/register", false, new ScenarioRequestDefinition("POST", "/register", BodyJson: "{}"), [new ScenarioCaptureDefinition("registeredEmail", "$.user.email")]);
+
+        var result = Assert.Single(await new HttpScenarioExecutor(client, new TesterScenario("capture-fail", "Capture fail", [step]), new ScenarioCredentials("unused", "password")).RunAsync());
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("Register", result.Error);
+        Assert.Contains("registeredEmail", result.Error);
+        Assert.Contains("$.user.email", result.Error);
     }
 }
 

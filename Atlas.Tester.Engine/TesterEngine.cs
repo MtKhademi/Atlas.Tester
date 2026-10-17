@@ -11,7 +11,17 @@ public sealed record TesterOptions(int Threads, int Iterations, TimeSpan RampUp,
     }
 }
 
-public sealed record RequestMeasurement(string Scenario, string Endpoint, bool Succeeded, int? StatusCode, TimeSpan Duration, string? Error = null);
+public sealed record RequestMeasurement(
+    string Scenario,
+    string Endpoint,
+    bool Succeeded,
+    int? StatusCode,
+    TimeSpan Duration,
+    string? Error = null,
+    string? Method = null,
+    string? RequestUrl = null,
+    string? RequestBody = null,
+    string? ResponseBody = null);
 public sealed record TesterSummary(int Total, int Succeeded, int Failed, double RequestsPerSecond, TimeSpan AverageLatency, TimeSpan P95Latency, IReadOnlyDictionary<string, int> StatusCodes);
 
 public sealed class TesterRunner
@@ -19,7 +29,7 @@ public sealed class TesterRunner
     public async Task<TesterSummary> RunAsync(TesterOptions options, Func<CancellationToken, Task<RequestMeasurement>> workload, IProgress<RequestMeasurement>? progress = null, CancellationToken cancellationToken = default)
     {
         options.Validate();
-        var measurements = new System.Collections.Concurrent.ConcurrentBag<RequestMeasurement>();
+        var measurements = new System.Collections.Concurrent.ConcurrentQueue<RequestMeasurement>();
         var started = DateTimeOffset.UtcNow;
         var delay = options.Threads == 1 ? options.RampUp : TimeSpan.FromTicks(options.RampUp.Ticks / options.Threads);
         await Parallel.ForEachAsync(Enumerable.Range(0, options.Threads), cancellationToken, async (worker, ct) =>
@@ -28,7 +38,7 @@ public sealed class TesterRunner
             for (var i = 0; i < options.Iterations; i++)
             {
                 var measurement = await workload(ct);
-                measurements.Add(measurement);
+                measurements.Enqueue(measurement);
                 progress?.Report(measurement);
             }
         });
@@ -46,7 +56,7 @@ public sealed class TesterRunner
     {
         options.Validate();
         TesterLogging.Logger.Information("Performance test started: threads={Threads}, iterations={Iterations}, rampUp={RampUp}", options.Threads, options.Iterations, options.RampUp);
-        var measurements = new System.Collections.Concurrent.ConcurrentBag<RequestMeasurement>();
+        var measurements = new System.Collections.Concurrent.ConcurrentQueue<RequestMeasurement>();
         var delay = options.Threads == 1 ? options.RampUp : TimeSpan.FromTicks(options.RampUp.Ticks / options.Threads);
         await Parallel.ForEachAsync(Enumerable.Range(0, options.Threads), cancellationToken, async (worker, ct) =>
         {
@@ -56,7 +66,7 @@ public sealed class TesterRunner
                 foreach (var measurement in await workload(ct))
                 {
                     TesterLogging.Logger.Information("Request {Scenario} {Endpoint}: success={Succeeded}, status={StatusCode}, durationMs={DurationMs}", measurement.Scenario, measurement.Endpoint, measurement.Succeeded, measurement.StatusCode, measurement.Duration.TotalMilliseconds);
-                    measurements.Add(measurement);
+                    measurements.Enqueue(measurement);
                     progress?.Report(measurement);
                 }
             }

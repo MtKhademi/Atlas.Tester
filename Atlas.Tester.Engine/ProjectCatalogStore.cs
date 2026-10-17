@@ -20,7 +20,6 @@ public sealed class ProjectCatalogStore
 
     public async Task<OpenApiCatalog?> LoadAsync(string projectId, CancellationToken cancellationToken = default)
     {
-        ClientDataPaths.MigrateLegacyApplicationData();
         var path = Path.Combine(DirectoryPath, projectId + ".json");
         if (!File.Exists(path)) return null;
         var snapshot = JsonSerializer.Deserialize<CatalogSnapshot>(await File.ReadAllTextAsync(path, cancellationToken), Options);
@@ -31,7 +30,6 @@ public sealed class ProjectCatalogStore
     {
         var path = Path.Combine(DirectoryPath, projectId + ".json");
         if (File.Exists(path)) File.Delete(path);
-        ClientDataPaths.DeleteLegacyFile("catalogs", projectId + ".json");
         return Task.CompletedTask;
     }
 

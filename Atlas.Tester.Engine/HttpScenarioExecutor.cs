@@ -25,12 +25,19 @@ public sealed partial class HttpScenarioExecutor(HttpClient client, TesterScenar
         {
             var path = BuildPath(step);
             using var request = new HttpRequestMessage(new HttpMethod(step.Method), path);
+            string? requestBody = null;
             if (step.RequiresAuthentication && variables.TryGetValue("accessToken", out var accessToken)) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
             ApplyHeaders(request, step.Request?.Headers);
             if (!string.IsNullOrWhiteSpace(step.Request?.BodyJson))
-                request.Content = new StringContent(ResolveVariables(step.Request.BodyJson, $"body for '{step.Name}'"), Encoding.UTF8, "application/json");
+            {
+                requestBody = ResolveVariables(step.Request.BodyJson, $"body for '{step.Name}'");
+                request.Content = new StringContent(requestBody, Encoding.UTF8, "application/json");
+            }
             else if (step.Name.Contains("login", StringComparison.OrdinalIgnoreCase))
-                request.Content = JsonContent.Create(credentials);
+            {
+                requestBody = JsonSerializer.Serialize(credentials);
+                request.Content = new StringContent(requestBody, Encoding.UTF8, "application/json");
+            }
             else if (step.Name.Contains("user asset", StringComparison.OrdinalIgnoreCase))
                 request.Content = JsonContent.Create(new { marketAssetId = "0RWVV8YYAVVYW", quantity = 1.0m, averageUnitCost = 1000m, note = "tester" });
             else if (step.Name.Contains("transaction", StringComparison.OrdinalIgnoreCase))
@@ -45,18 +52,25 @@ public sealed partial class HttpScenarioExecutor(HttpClient client, TesterScenar
             {
                 using var response = await client.SendAsync(request, cancellationToken);
                 var duration = Stopwatch.GetElapsedTime(started);
+                var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+                string? captureError = null;
+                if (step.Captures?.Count > 0)
+                {
+                    try { CaptureResponse(step, responseBody); }
+                    catch (InvalidOperationException ex) { captureError = ex.Message; }
+                }
                 if (response.IsSuccessStatusCode)
                 {
-                    var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
                     if (step.Name.Contains("login", StringComparison.OrdinalIgnoreCase)) SetVariableFromResponse("accessToken", responseBody);
                     if (!variables.ContainsKey("id")) SetVariableFromResponse("id", responseBody);
                 }
-                results.Add(new(scenario.Key, step.Path, response.IsSuccessStatusCode, (int)response.StatusCode, duration));
+                var error = captureError ?? (response.IsSuccessStatusCode ? null : $"HTTP {(int)response.StatusCode} ({response.ReasonPhrase})");
+                results.Add(new(scenario.Key, step.Path, response.IsSuccessStatusCode && captureError is null, (int)response.StatusCode, duration, error, step.Method, response.RequestMessage?.RequestUri?.ToString() ?? path, requestBody, responseBody));
             }
             catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
             {
                 TesterLogging.Logger.Error(ex, "HTTP request failed: {Method} {Path}", step.Method, step.Path);
-                results.Add(new(scenario.Key, step.Path, false, null, Stopwatch.GetElapsedTime(started), ex.GetType().Name));
+                results.Add(new(scenario.Key, step.Path, false, null, Stopwatch.GetElapsedTime(started), ex.Message, step.Method, path, requestBody));
             }
         }
         return results;
@@ -102,6 +116,26 @@ public sealed partial class HttpScenarioExecutor(HttpClient client, TesterScenar
     private void SetVariable(string variableName, string? value)
     {
         if (!string.IsNullOrWhiteSpace(value)) variables[variableName] = value;
+    }
+
+    private void CaptureResponse(ScenarioStep step, string responseBody)
+    {
+        if (string.IsNullOrWhiteSpace(responseBody))
+            throw new InvalidOperationException($"Node '{step.Name}' could not capture response values because the response body is empty.");
+        JsonDocument document;
+        try { document = JsonDocument.Parse(responseBody); }
+        catch (JsonException) { throw new InvalidOperationException($"Node '{step.Name}' could not capture response values because the response is not valid JSON."); }
+        using (document)
+        {
+            foreach (var capture in step.Captures!)
+            {
+                try { SetVariable(capture.VariableName, JsonPathValueResolver.Resolve(document.RootElement, capture.JsonPath)); }
+                catch (InvalidOperationException ex)
+                {
+                    throw new InvalidOperationException($"Node '{step.Name}' could not capture '{capture.VariableName}' from '{capture.JsonPath}': {ex.Message}");
+                }
+            }
+        }
     }
 
     private void SetVariableFromResponse(string variableName, string responseBody)
