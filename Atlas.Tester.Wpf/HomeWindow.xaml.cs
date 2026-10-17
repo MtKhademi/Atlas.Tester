@@ -2,7 +2,9 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
+using System.Net.Http;
 using Atlas.Tester.Engine;
+using Serilog;
 
 namespace AtlasTesterDesktop;
 
@@ -90,13 +92,13 @@ public partial class HomeWindow : Window
     private void Tests_Click(object sender, RoutedEventArgs e)
     {
         if (!EnsureProjectSelected()) return;
-        ShowPage(new MainWindow(new Uri(activeProject!.BackendUrl)));
+        ShowPage(new MainWindow(activeProject!));
     }
 
     private async void Scenarios_Click(object sender, RoutedEventArgs e)
     {
         if (!EnsureProjectSelected()) return;
-        await OpenScenarioBuilderAsync(new Uri(activeProject!.BackendUrl));
+        await OpenScenarioBuilderAsync(activeProject!);
     }
 
     private bool EnsureProjectSelected()
@@ -164,7 +166,26 @@ public partial class HomeWindow : Window
     private async Task EditProjectAsync(ProjectDefinition project)
     {
         var dialog = new ProjectDialog(this, project); if (dialog.ShowDialog() != true) return;
-        await projectStore.SaveAsync(dialog.Project); if (activeProject?.Id == project.Id) activeProject = dialog.Project; ShowProjects();
+        var loading = new LoadingWindow(this, "Updating project", "Refreshing the saved OpenAPI catalog for this project...");
+        loading.Show();
+        try
+        {
+            await Task.Yield();
+            using var client = new HttpClient { BaseAddress = new Uri(dialog.Project.BackendUrl), Timeout = TimeSpan.FromSeconds(15) };
+            var catalog = await OpenApiCatalog.LoadAsync(client, dialog.Project.OpenApiPath);
+            await new ProjectCatalogStore().SaveAsync(dialog.Project.Id, catalog);
+            await projectStore.SaveAsync(dialog.Project);
+            if (activeProject?.Id == project.Id) activeProject = dialog.Project;
+            ShowProjects();
+        }
+        catch (Exception ex)
+        {
+            AlertWindow.Show(this, "Project update error", ex.Message, true);
+        }
+        finally
+        {
+            loading.Close();
+        }
     }
 
     private async Task DeleteProjectAsync(ProjectDefinition project)
@@ -328,7 +349,25 @@ public partial class HomeWindow : Window
             foreach (var descendant in FindVisualChildren<T>(child)) yield return descendant;
         }
     }
-    public async Task OpenScenarioBuilderAsync(Uri target) => ShowPage(await ScenarioBuilderWindow.CreateAsync(target));
+    public async Task OpenScenarioBuilderAsync(ProjectDefinition project)
+    {
+        var loading = new LoadingWindow(this, "Loading scenario builder", "Preparing the saved API catalog for this project...");
+        loading.Show();
+        try
+        {
+            await Task.Yield();
+            ShowPage(await ScenarioBuilderWindow.CreateAsync(project));
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Scenario builder failed for project {ProjectId}", project.Id);
+            AlertWindow.Show(this, "OpenAPI catalog unavailable", ex.Message, true);
+        }
+        finally
+        {
+            loading.Close();
+        }
+    }
 
     private void SetupProjectsPanel()
     {
@@ -351,7 +390,21 @@ public partial class HomeWindow : Window
             var dialog = new ProjectDialog(this);
             if (dialog.ShowDialog() != true) return;
 
-            await projectStore.SaveAsync(dialog.Project);
+            var loading = new LoadingWindow(this, "Setting up project", "Connecting to the API and saving its OpenAPI catalog for fast future access...");
+            loading.Show();
+            try
+            {
+                await Task.Yield();
+                using var client = new HttpClient { BaseAddress = new Uri(dialog.Project.BackendUrl), Timeout = TimeSpan.FromSeconds(15) };
+                var catalog = await OpenApiCatalog.LoadAsync(client, dialog.Project.OpenApiPath);
+                await new ProjectCatalogStore().SaveAsync(dialog.Project.Id, catalog);
+                await projectStore.SaveAsync(dialog.Project);
+                Log.Information("Project initialized: project={ProjectId}, operations={OperationCount}", dialog.Project.Id, catalog.Operations.Count);
+            }
+            finally
+            {
+                loading.Close();
+            }
             activeProject = dialog.Project;
 
             if (projectSelector is not null)

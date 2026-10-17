@@ -14,6 +14,6 @@ public sealed class ProjectStore
     {
         var path = Path.Combine(DirectoryPath, id + ".json");
         if (File.Exists(path)) File.Delete(path);
-        return Task.CompletedTask;
+        return new ProjectCatalogStore().DeleteAsync(id, ct);
     }
 }

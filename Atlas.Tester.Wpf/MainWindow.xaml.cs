@@ -21,13 +21,15 @@ public partial class MainWindow : UserControl
     private Border? reportCard;
     private readonly Dictionary<string, string> savedScenarioPaths = new(StringComparer.OrdinalIgnoreCase);
     private string? latestReportDirectory;
+    private readonly ProjectDefinition? project;
 
-    public MainWindow(Uri? projectBackend = null)
+    public MainWindow(ProjectDefinition? project = null)
     {
+        this.project = project;
         Log.Logger = new LoggerConfiguration().MinimumLevel.Debug().WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}").CreateLogger();
         Log.Information("Tester UI started");
         InitializeComponent();
-        if (projectBackend is not null) TargetUrlBox.Text = projectBackend.ToString().TrimEnd('/');
+        if (project is not null) TargetUrlBox.Text = project.BackendUrl;
         ChartStatus.Text = "Ready to run · results will appear here";
         ReportStatus.Text = "No test has run yet. Reports will be generated after completion.";
         AddReportActions();
@@ -79,7 +81,7 @@ public partial class MainWindow : UserControl
             ReportTable.Visibility = Visibility.Collapsed;
             ChartStatus.Text = "Loading OpenAPI contract..."; ReportStatus.Text = "Validating the selected scenario against the target API.";
             using var client = new HttpClient { BaseAddress = target.Target, Timeout = TimeSpan.FromSeconds(30) };
-            var openApi = await OpenApiCatalog.LoadAsync(client, cancellation!.Token);
+            var openApi = await OpenApiCatalog.LoadAsync(client, project?.OpenApiPath ?? "/openapi/v1.json", cancellation!.Token);
             openApi.Validate(scenario);
             ChartStatus.Text = "Running live HTTP requests"; ReportStatus.Text = "Connected to target; collecting measurements.";
             var credentials = new ScenarioCredentials(EmailBox.Text.Trim(), PasswordBox.Password);
@@ -198,7 +200,12 @@ public partial class MainWindow : UserControl
 
     private async void ScenarioBuilder_Click(object sender, RoutedEventArgs e)
     {
-        try { if (Window.GetWindow(this) is HomeWindow host) await host.OpenScenarioBuilderAsync(new Uri(TargetUrlBox.Text.Trim())); }
+        try
+        {
+            if (Window.GetWindow(this) is not HomeWindow host) return;
+            if (project is null) throw new InvalidOperationException("Select a project before opening Scenario Builder.");
+            await host.OpenScenarioBuilderAsync(project);
+        }
         catch (Exception ex) { Log.Error(ex, "Scenario builder failed"); AlertWindow.Show(this, "Scenario builder error", ex.Message, true); }
     }
 

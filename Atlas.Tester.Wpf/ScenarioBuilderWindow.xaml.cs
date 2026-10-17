@@ -22,12 +22,21 @@ public partial class ScenarioBuilderWindow : UserControl
         InitializeComponent(); this.catalog = catalog; var view = CollectionViewSource.GetDefaultView(catalog.Operations); view.GroupDescriptions.Add(new PropertyGroupDescription(nameof(OpenApiOperation.TagName))); ApiList.ItemsSource = view;
     }
 
-    public static async Task<ScenarioBuilderWindow> CreateAsync(Uri target)
+    public static async Task<ScenarioBuilderWindow> CreateAsync(ProjectDefinition project)
     {
-        Log.Information("Scenario Builder opening: target={Target}", target);
-        using var client = new HttpClient { BaseAddress = target, Timeout = TimeSpan.FromSeconds(15) };
-        var catalog = await OpenApiCatalog.LoadAsync(client);
-        Log.Information("Scenario Builder catalog ready: operations={Count}", catalog.Operations.Count);
+        var cache = new ProjectCatalogStore();
+        var catalog = await cache.LoadAsync(project.Id);
+        if (catalog is not null)
+        {
+            Log.Information("Scenario Builder catalog loaded from cache: project={ProjectId}, operations={Count}", project.Id, catalog.Operations.Count);
+            return new ScenarioBuilderWindow(catalog);
+        }
+
+        Log.Information("Scenario Builder loading catalog: project={ProjectId}, target={Target}, path={OpenApiPath}", project.Id, project.BackendUrl, project.OpenApiPath);
+        using var client = new HttpClient { BaseAddress = new Uri(project.BackendUrl), Timeout = TimeSpan.FromSeconds(15) };
+        catalog = await OpenApiCatalog.LoadAsync(client, project.OpenApiPath);
+        await cache.SaveAsync(project.Id, catalog);
+        Log.Information("Scenario Builder catalog cached: project={ProjectId}, operations={Count}", project.Id, catalog.Operations.Count);
         return new ScenarioBuilderWindow(catalog);
     }
 
