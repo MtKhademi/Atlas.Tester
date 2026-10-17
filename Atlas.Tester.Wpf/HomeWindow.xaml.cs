@@ -214,31 +214,13 @@ public partial class HomeWindow : Window
         pageLayout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         pageLayout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
+        var section = page is MainWindow ? "TEST" : "SCENARIO";
+        var projectName = activeProject?.Name ?? "NO PROJECT";
         var pageHeader = new StackPanel { Margin = new Thickness(0, 0, 0, 22) };
-        pageHeader.Children.Add(new TextBlock
-        {
-            Text = page is MainWindow ? "ATLAS  /  TESTER" : "ATLAS  /  SCENARIO BUILDER",
-            Foreground = new SolidColorBrush(Color.FromRgb(85, 181, 255)),
-            FontSize = 14,
-            FontWeight = FontWeights.Bold
-        });
-        if (page is MainWindow)
-        {
-            pageHeader.Children.Add(new TextBlock
-            {
-                Text = "Run a performance test",
-                Foreground = Brushes.White,
-                FontSize = 32,
-                FontWeight = FontWeights.SemiBold,
-                Margin = new Thickness(0, 10, 0, 4)
-            });
-            pageHeader.Children.Add(new TextBlock
-            {
-                Text = "Execute a real HTTP scenario against your selected target",
-                Foreground = new SolidColorBrush(Color.FromRgb(174, 179, 192)),
-                FontSize = 14
-            });
-        }
+        var breadcrumb = new TextBlock { FontSize = 14, FontWeight = FontWeights.Bold };
+        breadcrumb.Inlines.Add(new System.Windows.Documents.Run($"ATLAS  /  {section}  /  ") { Foreground = new SolidColorBrush(Color.FromRgb(85, 181, 255)) });
+        breadcrumb.Inlines.Add(new System.Windows.Documents.Run(projectName) { Foreground = new SolidColorBrush(Color.FromRgb(220, 105, 115)) });
+        pageHeader.Children.Add(breadcrumb);
         Grid.SetRow(pageHeader, 0);
         pageLayout.Children.Add(pageHeader);
 
