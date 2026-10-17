@@ -190,7 +190,7 @@ public partial class HomeWindow : Window
 
     private async Task DeleteProjectAsync(ProjectDefinition project)
     {
-        if (MessageBox.Show($"Delete project '{project.Name}'?", "Delete project", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+        if (!AlertWindow.Confirm(this, "Delete project", $"Delete project '{project.Name}'? This also removes its saved API catalog.", true)) return;
         await projectStore.DeleteAsync(project.Id); if (activeProject?.Id == project.Id) activeProject = null; ShowProjects();
     }
     private void ShowPage(object page)
