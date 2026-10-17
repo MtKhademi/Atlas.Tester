@@ -1,6 +1,6 @@
 namespace Atlas.Tester.Engine;
 
-public sealed record ScenarioStep(string Name, string Method, string Path, bool RequiresAuthentication, ScenarioRequestDefinition? Request = null, IReadOnlyList<ScenarioCaptureDefinition>? Captures = null);
+public sealed record ScenarioStep(string Name, string Method, string Path, bool RequiresAuthentication, ScenarioRequestDefinition? Request = null, IReadOnlyList<ScenarioCaptureDefinition>? Captures = null, IReadOnlyList<ScenarioAssertionDefinition>? Assertions = null);
 public sealed record TesterScenario(string Key, string DisplayName, IReadOnlyList<ScenarioStep> Steps);
 
 public static class ScenarioCatalog

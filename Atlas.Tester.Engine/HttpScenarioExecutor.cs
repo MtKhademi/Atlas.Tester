@@ -54,6 +54,7 @@ public sealed partial class HttpScenarioExecutor(HttpClient client, TesterScenar
                 var duration = Stopwatch.GetElapsedTime(started);
                 var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
                 string? captureError = null;
+                string? assertionError = null;
                 if (step.Captures?.Count > 0)
                 {
                     try { CaptureResponse(step, responseBody); }
@@ -64,8 +65,12 @@ public sealed partial class HttpScenarioExecutor(HttpClient client, TesterScenar
                     if (step.Name.Contains("login", StringComparison.OrdinalIgnoreCase)) SetVariableFromResponse("accessToken", responseBody);
                     if (!variables.ContainsKey("id")) SetVariableFromResponse("id", responseBody);
                 }
-                var error = captureError ?? (response.IsSuccessStatusCode ? null : $"HTTP {(int)response.StatusCode} ({response.ReasonPhrase})");
-                results.Add(new(scenario.Key, step.Path, response.IsSuccessStatusCode && captureError is null, (int)response.StatusCode, duration, error, step.Method, response.RequestMessage?.RequestUri?.ToString() ?? path, requestBody, responseBody));
+                try { assertionError = EvaluateAssertions(step, response, responseBody); }
+                catch (InvalidOperationException ex) { assertionError = ex.Message; }
+                var hasAssertions = step.Assertions?.Count > 0;
+                var succeeded = hasAssertions ? assertionError is null && captureError is null : response.IsSuccessStatusCode && captureError is null;
+                var error = captureError ?? assertionError ?? (succeeded ? null : $"HTTP {(int)response.StatusCode} ({response.ReasonPhrase})");
+                results.Add(new(scenario.Key, step.Path, succeeded, (int)response.StatusCode, duration, error, step.Method, response.RequestMessage?.RequestUri?.ToString() ?? path, requestBody, responseBody));
             }
             catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
             {
@@ -150,6 +155,52 @@ public sealed partial class HttpScenarioExecutor(HttpClient client, TesterScenar
         {
             // A successful endpoint may legitimately return a non-JSON body; captures are handled explicitly by a later task.
         }
+    }
+
+    private static string? EvaluateAssertions(ScenarioStep step, HttpResponseMessage response, string responseBody)
+    {
+        if (step.Assertions?.Count is not > 0) return null;
+        foreach (var assertion in step.Assertions)
+        {
+            var type = assertion.Type.Trim().ToLowerInvariant();
+            switch (type)
+            {
+                case "reachable":
+                    continue;
+                case "statuscode":
+                case "statuscodes":
+                    var allowed = (assertion.ExpectedValue ?? string.Empty).Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+                    if (allowed.Length == 0) return $"Node '{step.Name}' statusCode assertion needs an expected status code.";
+                    if (allowed.Contains(((int)response.StatusCode).ToString(), StringComparer.OrdinalIgnoreCase)) continue;
+                    return $"Node '{step.Name}' expected status code {string.Join(" or ", allowed)}, but received {(int)response.StatusCode}.";
+                case "statusrange":
+                    var range = (assertion.ExpectedValue ?? string.Empty).Split('-', StringSplitOptions.TrimEntries);
+                    if (range.Length != 2 || !int.TryParse(range[0], out var minimum) || !int.TryParse(range[1], out var maximum)) return $"Node '{step.Name}' statusRange assertion must use a range such as '200-299'.";
+                    if ((int)response.StatusCode >= minimum && (int)response.StatusCode <= maximum) continue;
+                    return $"Node '{step.Name}' expected status code between {minimum} and {maximum}, but received {(int)response.StatusCode}.";
+                case "jsonpathexists":
+                    ResolveJsonValue(step, assertion, responseBody);
+                    continue;
+                case "jsonpathequals":
+                    var actual = ResolveJsonValue(step, assertion, responseBody);
+                    if (string.Equals(actual, assertion.ExpectedValue, StringComparison.Ordinal)) continue;
+                    return $"Node '{step.Name}' expected '{assertion.JsonPath}' to equal '{assertion.ExpectedValue}', but received '{actual}'.";
+                default:
+                    return $"Node '{step.Name}' has an unsupported assertion type '{assertion.Type}'.";
+            }
+        }
+        return null;
+    }
+
+    private static string ResolveJsonValue(ScenarioStep step, ScenarioAssertionDefinition assertion, string responseBody)
+    {
+        if (string.IsNullOrWhiteSpace(assertion.JsonPath)) throw new InvalidOperationException($"Node '{step.Name}' JSON assertion needs a jsonPath.");
+        try
+        {
+            using var document = JsonDocument.Parse(responseBody);
+            return JsonPathValueResolver.Resolve(document.RootElement, assertion.JsonPath);
+        }
+        catch (JsonException) { throw new InvalidOperationException($"Node '{step.Name}' expected JSON response for '{assertion.JsonPath}', but the response was not JSON."); }
     }
 
     [GeneratedRegex("\\{\\{([^}]+)\\}\\}")]

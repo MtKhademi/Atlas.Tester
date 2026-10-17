@@ -21,10 +21,12 @@ public partial class ScenarioBuilderWindow : UserControl
     private readonly List<ScenarioNodeDefinition> nodes = [];
     private int selectedNodeIndex = -1;
     private bool loadingSavedScenarios;
+    private TextBox? nodeAssertionsBox;
 
     private ScenarioBuilderWindow(OpenApiCatalog catalog)
     {
         InitializeComponent();
+        AddAssertionEditor();
         this.catalog = catalog;
         var view = CollectionViewSource.GetDefaultView(catalog.Operations);
         view.GroupDescriptions.Add(new PropertyGroupDescription(nameof(OpenApiOperation.TagName)));
@@ -110,6 +112,7 @@ public partial class ScenarioBuilderWindow : UserControl
         NodeDisplayNameBox.Text = node.DisplayName; NodeMethodBox.Text = node.Method; NodePathBox.Text = node.Path;
         NodeBodyBox.Text = node.Request.BodyJson ?? "";
         NodeHeadersBox.Text = SerializeOrEmpty(node.Request.Headers); NodeQueryBox.Text = SerializeOrEmpty(node.Request.Query); NodePathParametersBox.Text = SerializeOrEmpty(node.Request.PathParameters);
+        nodeAssertionsBox!.Text = node.Assertions is not { Count: > 0 } ? string.Empty : JsonSerializer.Serialize(node.Assertions, JsonOptions);
     }
 
     private void ApplyNodeEdits_Click(object sender, RoutedEventArgs e)
@@ -121,7 +124,8 @@ public partial class ScenarioBuilderWindow : UserControl
             var method = NodeMethodBox.Text.Trim().ToUpperInvariant(); var path = NodePathBox.Text.Trim(); var title = NodeDisplayNameBox.Text.Trim();
             if (string.IsNullOrWhiteSpace(method) || string.IsNullOrWhiteSpace(path) || string.IsNullOrWhiteSpace(title)) throw new InvalidOperationException("Node name, method and path are required.");
             var request = new ScenarioRequestDefinition(method, path, ParseDictionary(NodeHeadersBox.Text), ParseDictionary(NodeQueryBox.Text), ParseDictionary(NodePathParametersBox.Text), EmptyToNull(NodeBodyBox.Text));
-            nodes[selectedNodeIndex] = previous with { Method = method, Path = path, DisplayName = title, Request = request };
+            var assertions = ParseAssertions(nodeAssertionsBox!.Text);
+            nodes[selectedNodeIndex] = previous with { Method = method, Path = path, DisplayName = title, Request = request, Assertions = assertions };
             RenderWorkflow();
         }
         catch (Exception ex) { AlertWindow.Show(this, "Node data is invalid", ex.Message, true); }
@@ -193,6 +197,19 @@ public partial class ScenarioBuilderWindow : UserControl
     private static string? EmptyToNull(string value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     private static string SerializeOrEmpty(IReadOnlyDictionary<string, string>? values) => values is null || values.Count == 0 ? "" : JsonSerializer.Serialize(values, JsonOptions);
     private static IReadOnlyDictionary<string, string>? ParseDictionary(string json) => string.IsNullOrWhiteSpace(json) ? null : JsonSerializer.Deserialize<Dictionary<string, string>>(json, JsonOptions) ?? throw new InvalidOperationException("A request collection must be a JSON object of string values.");
+    private static IReadOnlyList<ScenarioAssertionDefinition> ParseAssertions(string json) => string.IsNullOrWhiteSpace(json) ? [] : JsonSerializer.Deserialize<ScenarioAssertionDefinition[]>(json, JsonOptions) ?? throw new InvalidOperationException("Assertions must be a JSON array.");
+
+    private void AddAssertionEditor()
+    {
+        var applyButton = NodeEditor.Children.OfType<FrameworkElement>().Single(child => Grid.GetRow(child) == 3);
+        NodeEditor.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        Grid.SetRow(applyButton, 4);
+        var panel = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
+        panel.Children.Add(new TextBlock { Text = "ASSERTIONS JSON (OPTIONAL)", Foreground = new SolidColorBrush(Color.FromRgb(174, 179, 192)), FontSize = 10, Margin = new Thickness(0, 0, 0, 4) });
+        nodeAssertionsBox = new TextBox { Height = 58, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, FontFamily = new FontFamily("Consolas"), FontSize = 11, ToolTip = "Example: [{\"type\":\"statusCode\",\"expectedValue\":\"200\"}]" };
+        panel.Children.Add(nodeAssertionsBox);
+        Grid.SetRow(panel, 3); Grid.SetColumnSpan(panel, 2); NodeEditor.Children.Add(panel);
+    }
     private static ScenarioDefinition NormalizeScenario(ScenarioDefinition scenario)
     {
         if (string.IsNullOrWhiteSpace(scenario.Name)) throw new InvalidOperationException("Scenario JSON needs a name.");

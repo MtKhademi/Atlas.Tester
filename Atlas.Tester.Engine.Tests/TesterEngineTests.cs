@@ -284,6 +284,45 @@ public sealed class TesterEngineTests
         Assert.Contains("registeredEmail", result.Error);
         Assert.Contains("$.user.email", result.Error);
     }
+
+    [Fact]
+    public async Task Scenario_executor_accepts_an_expected_unauthorized_status_code()
+    {
+        var handler = new RecordingHandler(_ => new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.Unauthorized));
+        using var client = new HttpClient(handler) { BaseAddress = new Uri("https://atlas.test") };
+        var step = new ScenarioStep("Denied login", "POST", "/login", false, new ScenarioRequestDefinition("POST", "/login", BodyJson: "{}"), Assertions: [new ScenarioAssertionDefinition("statusCode", "401")]);
+
+        var result = Assert.Single(await new HttpScenarioExecutor(client, new TesterScenario("expected-401", "Expected 401", [step]), new ScenarioCredentials("email", "password")).RunAsync());
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(401, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task Scenario_executor_reports_an_unexpected_status_code()
+    {
+        var handler = new RecordingHandler(_ => new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.NotFound));
+        using var client = new HttpClient(handler) { BaseAddress = new Uri("https://atlas.test") };
+        var step = new ScenarioStep("Find profile", "GET", "/profile", false, Assertions: [new ScenarioAssertionDefinition("statusCode", "200")]);
+
+        var result = Assert.Single(await new HttpScenarioExecutor(client, new TesterScenario("unexpected-404", "Unexpected 404", [step]), new ScenarioCredentials("email", "password")).RunAsync());
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("expected status code 200", result.Error);
+        Assert.Contains("404", result.Error);
+    }
+
+    [Fact]
+    public async Task Scenario_executor_checks_json_path_assertions()
+    {
+        var handler = new RecordingHandler(_ => new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new System.Net.Http.StringContent("{\"user\":{\"role\":\"admin\"}}") });
+        using var client = new HttpClient(handler) { BaseAddress = new Uri("https://atlas.test") };
+        var step = new ScenarioStep("Read user", "GET", "/me", false, Assertions: [new ScenarioAssertionDefinition("jsonPathExists", JsonPath: "$.user.role"), new ScenarioAssertionDefinition("jsonPathEquals", "admin", "$.user.role")]);
+
+        var result = Assert.Single(await new HttpScenarioExecutor(client, new TesterScenario("json-assertion", "JSON assertion", [step]), new ScenarioCredentials("email", "password")).RunAsync());
+
+        Assert.True(result.Succeeded);
+    }
 }
 
 file sealed class InlineProgress<T>(Action<T> callback) : IProgress<T>
