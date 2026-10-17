@@ -28,10 +28,10 @@ public sealed record ScenarioCaptureDefinition(string VariableName, string JsonP
 public sealed record ScenarioAssertionDefinition(string Type, string? ExpectedValue = null, string? JsonPath = null);
 public sealed record SavedScenario(string Name, string Path, DateTimeOffset LastModifiedUtc, long SizeBytes);
 
-public sealed class ScenarioStore(string directory)
+public sealed class ScenarioStore(string? directory = null)
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true, PropertyNameCaseInsensitive = true };
-    public string DirectoryPath { get; } = directory;
+    public string DirectoryPath { get; } = directory ?? ClientDataPaths.ScenariosDirectory;
 
     public async Task<string> SaveAsync(ScenarioDefinition scenario, CancellationToken cancellationToken = default)
     {

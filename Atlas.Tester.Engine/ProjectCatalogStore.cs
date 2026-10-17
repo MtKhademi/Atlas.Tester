@@ -8,10 +8,11 @@ public sealed class ProjectCatalogStore
     public string DirectoryPath { get; }
 
     public ProjectCatalogStore(string? directoryPath = null) =>
-        DirectoryPath = directoryPath ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "AtlasTester", "catalogs");
+        DirectoryPath = directoryPath ?? ClientDataPaths.CatalogsDirectory;
 
     public async Task SaveAsync(string projectId, OpenApiCatalog catalog, CancellationToken cancellationToken = default)
     {
+        ClientDataPaths.EnsureDirectories();
         Directory.CreateDirectory(DirectoryPath);
         var snapshot = new CatalogSnapshot(DateTimeOffset.UtcNow, catalog.Operations);
         await File.WriteAllTextAsync(Path.Combine(DirectoryPath, projectId + ".json"), JsonSerializer.Serialize(snapshot, Options), cancellationToken);
@@ -19,6 +20,7 @@ public sealed class ProjectCatalogStore
 
     public async Task<OpenApiCatalog?> LoadAsync(string projectId, CancellationToken cancellationToken = default)
     {
+        ClientDataPaths.MigrateLegacyApplicationData();
         var path = Path.Combine(DirectoryPath, projectId + ".json");
         if (!File.Exists(path)) return null;
         var snapshot = JsonSerializer.Deserialize<CatalogSnapshot>(await File.ReadAllTextAsync(path, cancellationToken), Options);
@@ -29,6 +31,7 @@ public sealed class ProjectCatalogStore
     {
         var path = Path.Combine(DirectoryPath, projectId + ".json");
         if (File.Exists(path)) File.Delete(path);
+        ClientDataPaths.DeleteLegacyFile("catalogs", projectId + ".json");
         return Task.CompletedTask;
     }
 

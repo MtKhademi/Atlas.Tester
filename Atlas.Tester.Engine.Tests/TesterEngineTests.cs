@@ -206,6 +206,30 @@ public sealed class TesterEngineTests
         }
         finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
     }
+
+    [Fact]
+    public void Client_data_migration_copies_legacy_files_without_overwriting_newer_data()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "atlas-client-data-" + Guid.NewGuid().ToString("N"));
+        var legacy = Path.Combine(root, "legacy");
+        var destination = Path.Combine(root, "destination");
+        try
+        {
+            Directory.CreateDirectory(legacy);
+            var legacyFile = Path.Combine(legacy, "scenario.json");
+            File.WriteAllText(legacyFile, "legacy");
+
+            ClientDataPaths.MigrateDirectory(legacy, destination);
+            Assert.Equal("legacy", File.ReadAllText(Path.Combine(destination, "scenario.json")));
+
+            File.WriteAllText(Path.Combine(destination, "scenario.json"), "current");
+            File.WriteAllText(legacyFile, "old-copy");
+            ClientDataPaths.MigrateDirectory(legacy, destination);
+
+            Assert.Equal("current", File.ReadAllText(Path.Combine(destination, "scenario.json")));
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
 }
 
 file sealed class InlineProgress<T>(Action<T> callback) : IProgress<T>

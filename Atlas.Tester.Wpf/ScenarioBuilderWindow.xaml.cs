@@ -150,7 +150,7 @@ public partial class ScenarioBuilderWindow : UserControl
         Log.Information("Scenario save requested: name={Name}, nodes={NodeCount}", NameBox.Text, nodes.Count);
         if (string.IsNullOrWhiteSpace(NameBox.Text)) { Log.Warning("Scenario save skipped because scenario name is empty"); AlertWindow.Show(this, "Scenario name required", "Enter a name before saving the scenario.", true); NameBox.Focus(); return; }
         if (nodes.Count == 0) { Log.Warning("Scenario save skipped because no nodes were added"); AlertWindow.Show(this, "Empty scenario", "Drag at least one API into the workflow before saving.", true); return; }
-        var store = new ScenarioStore(System.IO.Path.Combine(AppContext.BaseDirectory, "scenarios")); var path = await store.SaveAsync(new ScenarioDefinition(NameBox.Text, DescriptionBox.Text, nodes)); Log.Information("Scenario saved: path={Path}, bytes={Bytes}", path, new FileInfo(path).Length); AlertWindow.Show(this, "Scenario saved", $"The scenario was saved successfully:\n{path}");
+        var store = new ScenarioStore(); var path = await store.SaveAsync(new ScenarioDefinition(NameBox.Text, DescriptionBox.Text, nodes)); Log.Information("Scenario saved: path={Path}, bytes={Bytes}", path, new FileInfo(path).Length); AlertWindow.Show(this, "Scenario saved", $"The scenario was saved successfully:\n{path}");
     }
 
     private void Clear_Click(object sender, RoutedEventArgs e) { nodes.Clear(); WorkflowCanvas.Children.Clear(); WorkflowCanvas.Height = 450; UpdateWorkflowSummary(); }

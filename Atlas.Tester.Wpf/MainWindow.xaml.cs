@@ -32,6 +32,7 @@ public partial class MainWindow : UserControl
         if (project is not null) TargetUrlBox.Text = project.BackendUrl;
         ChartStatus.Text = "Ready to run · results will appear here";
         ReportStatus.Text = "No test has run yet. Reports will be generated after completion.";
+        OutputStatus.Text = $"Reports: {ClientDataPaths.ReportsDirectory}";
         AddReportActions();
         LoadLocalDefaults();
         StopButton.IsEnabled = false;
@@ -90,7 +91,7 @@ public partial class MainWindow : UserControl
             RequestsValue.Text = "0"; SuccessValue.Text = "0.00%"; LatencyValue.Text = "—"; MockProgress.Value = 0; ChartStatus.Text = $"Running {scenario.DisplayName} · 0 / {expectedRequests} requests";
             var measurements = await runner.RunScenarioAsync(options, ct => new HttpScenarioExecutor(client, scenario, credentials).RunAsync(ct), new Progress<RequestMeasurement>(UpdateLiveMetrics), cancellation!.Token);
             var rows = measurements.GroupBy(x => new { x.Scenario, x.Endpoint }).Select(group => { var values = group.Select(x => x.Duration).OrderBy(x => x).ToArray(); return new ReportRow(group.Key.Scenario, group.Key.Endpoint, values.Length, group.Count(x => x.Succeeded), group.Count(x => !x.Succeeded), values.Average(x => x.TotalMilliseconds), values[Math.Min(values.Length - 1, (int)Math.Ceiling(values.Length * .95) - 1)].TotalMilliseconds); }).ToArray();
-            var output = Path.Combine(AppContext.BaseDirectory, "reports", "latest"); Directory.CreateDirectory(output); var report = new TesterReport(DateTimeOffset.UtcNow, rows);
+            var output = Path.Combine(ClientDataPaths.ReportsDirectory, "latest"); Directory.CreateDirectory(output); var report = new TesterReport(DateTimeOffset.UtcNow, rows);
             latestReportDirectory = output;
             OpenReportButton?.SetValue(IsEnabledProperty, true);
             (OpenReportButton?.Tag as Button)?.SetValue(IsEnabledProperty, true);
@@ -175,7 +176,7 @@ public partial class MainWindow : UserControl
 
     private void RefreshScenarios()
     {
-        var store = new ScenarioStore(Path.Combine(AppContext.BaseDirectory, "scenarios")); var directory = store.DirectoryPath; Directory.CreateDirectory(directory);
+        var store = new ScenarioStore(); var directory = store.DirectoryPath; Directory.CreateDirectory(directory);
         Log.Information("Scenario refresh started: directory={Directory}, comboItemsBefore={Count}", directory, ScenarioBox.Items.Count);
         foreach (var item in savedScenarioPaths.Keys.ToArray()) ScenarioBox.Items.Remove(item); savedScenarioPaths.Clear();
         var saved = store.List();
