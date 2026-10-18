@@ -47,8 +47,9 @@ public partial class ScenarioBuilderWindow : UserControl
         var cache = new ProjectCatalogStore();
         var catalog = await cache.LoadAsync(project.Id);
         if (catalog is not null) return new ScenarioBuilderWindow(catalog);
-        using var client = new HttpClient { BaseAddress = new Uri(project.BackendUrl), Timeout = TimeSpan.FromSeconds(15) };
-        catalog = await OpenApiCatalog.LoadAsync(client, project.OpenApiPath);
+        using var client = new HttpClient { BaseAddress = new Uri(project.BackendUrl), Timeout = TimeSpan.FromSeconds(8) };
+        try { catalog = await OpenApiCatalog.LoadAsync(client, project.OpenApiPath); }
+        catch (TaskCanceledException ex) { throw new InvalidOperationException($"The OpenAPI catalog at {project.BackendUrl}{project.OpenApiPath} did not respond within 8 seconds. Start the sandbox first or refresh the project catalog.", ex); }
         await cache.SaveAsync(project.Id, catalog);
         return new ScenarioBuilderWindow(catalog);
     }

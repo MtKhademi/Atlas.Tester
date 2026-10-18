@@ -10,6 +10,7 @@ public sealed class SandboxRuntime : IAsyncDisposable
     private readonly List<string> created = [];
     private readonly List<string> output = [];
     private Process? backend;
+    public SmsMockServer? SmsMock { get; private set; }
 
     public SandboxRuntime(SandboxRuntimePlan plan)
     {
@@ -28,6 +29,8 @@ public sealed class SandboxRuntime : IAsyncDisposable
     {
         try
         {
+            SmsMock = new SmsMockServer();
+            await SmsMock.StartAsync(cancellationToken);
             await DockerAsync(["network", "create", "--label", SandboxRuntimePlan.ManagedLabel, "--label", $"atlas-tester.run-id={plan.Run.RunId}", plan.Run.NetworkName], cancellationToken); created.Add($"network:{plan.Run.NetworkName}");
             await DockerAsync(["volume", "create", "--label", SandboxRuntimePlan.ManagedLabel, "--label", $"atlas-tester.run-id={plan.Run.RunId}", plan.Database.VolumeName], cancellationToken); created.Add($"volume:{plan.Database.VolumeName}");
             await DockerAsync(["run", "-d", "--name", plan.Database.ContainerName, "--network", plan.Run.NetworkName, "--network-alias", plan.Database.HostName, "-p", $"127.0.0.1:{plan.Database.HostPort}:5432", "--label", SandboxRuntimePlan.ManagedLabel, "--label", $"atlas-tester.run-id={plan.Run.RunId}", "-e", $"POSTGRES_DB={plan.Database.DatabaseName}", "-e", $"POSTGRES_USER={plan.Database.UserName}", "-e", $"POSTGRES_PASSWORD={plan.Database.Password}", "-v", $"{plan.Database.VolumeName}:/var/lib/postgresql/data", "postgres:16-alpine"], cancellationToken); created.Add($"container:{plan.Database.ContainerName}");
@@ -45,6 +48,13 @@ public sealed class SandboxRuntime : IAsyncDisposable
         var connectionString = $"Host=127.0.0.1;Port={plan.Database.HostPort};Database={plan.Database.DatabaseName};Username={plan.Database.UserName};Password={plan.Database.Password}";
         info.Environment["IAM__ConnectionString"] = connectionString;
         info.Environment["Oracle__ConnectionString"] = connectionString;
+        if (SmsMock is not null)
+        {
+            info.Environment["IAM__PasswordReset__SmsIr__Enabled"] = "true";
+            info.Environment["IAM__PasswordReset__SmsIr__BaseUrl"] = SmsMock.BaseAddress.ToString();
+            info.Environment["IAM__PasswordReset__SmsIr__ApiKey"] = "atlas-tester-mock";
+            info.Environment["IAM__PasswordReset__SmsIr__TemplateId"] = "123456";
+        }
         backend = Process.Start(info) ?? throw new InvalidOperationException("Could not start the sandbox backend process.");
         backend.OutputDataReceived += (_, line) => { if (!string.IsNullOrWhiteSpace(line.Data)) output.Add(line.Data); };
         backend.ErrorDataReceived += (_, line) => { if (!string.IsNullOrWhiteSpace(line.Data)) output.Add(line.Data); };
@@ -101,6 +111,12 @@ public sealed class SandboxRuntime : IAsyncDisposable
             try { await DockerAsync(command, CancellationToken.None); } catch { }
         }
         created.Clear(); backend?.Dispose(); backend = null;
+        if (SmsMock is not null)
+        {
+            try { await SmsMock.DisposeAsync(); }
+            catch (Exception ex) { TesterLogging.Logger.Warning(ex, "Sandbox SMS mock cleanup failed"); }
+        }
+        SmsMock = null;
         lock (ActiveRuntimesLock) ActiveRuntimes.Remove(this);
     }
 }

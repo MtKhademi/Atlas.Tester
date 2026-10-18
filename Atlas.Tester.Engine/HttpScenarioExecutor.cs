@@ -11,14 +11,16 @@ public sealed record ScenarioCredentials(string EmailOrPhone, string Password);
 
 public sealed partial class HttpScenarioExecutor(HttpClient client, TesterScenario scenario, ScenarioCredentials credentials)
 {
+    private readonly ISmsMockActivity? smsMock;
     private readonly Dictionary<string, string> variables = new(StringComparer.OrdinalIgnoreCase)
     {
         ["emailOrPhone"] = credentials.EmailOrPhone,
         ["password"] = credentials.Password
     };
 
-    public HttpScenarioExecutor(HttpClient client, TesterScenario scenario, IReadOnlyDictionary<string, string> scenarioVariables) : this(client, scenario, new ScenarioCredentials(scenarioVariables.GetValueOrDefault("emailOrPhone") ?? scenarioVariables.GetValueOrDefault("phone") ?? scenarioVariables.GetValueOrDefault("email") ?? "", scenarioVariables.GetValueOrDefault("password") ?? ""))
+    public HttpScenarioExecutor(HttpClient client, TesterScenario scenario, IReadOnlyDictionary<string, string> scenarioVariables, ISmsMockActivity? smsMock = null) : this(client, scenario, new ScenarioCredentials(scenarioVariables.GetValueOrDefault("emailOrPhone") ?? scenarioVariables.GetValueOrDefault("phone") ?? scenarioVariables.GetValueOrDefault("email") ?? "", scenarioVariables.GetValueOrDefault("password") ?? ""))
     {
+        this.smsMock = smsMock;
         foreach (var variable in scenarioVariables) variables[variable.Key] = variable.Value;
     }
 
@@ -165,7 +167,7 @@ public sealed partial class HttpScenarioExecutor(HttpClient client, TesterScenar
         }
     }
 
-    private static string? EvaluateAssertions(ScenarioStep step, HttpResponseMessage response, string responseBody)
+    private string? EvaluateAssertions(ScenarioStep step, HttpResponseMessage response, string responseBody)
     {
         if (step.Assertions?.Count is not > 0) return null;
         foreach (var assertion in step.Assertions)
@@ -193,6 +195,12 @@ public sealed partial class HttpScenarioExecutor(HttpClient client, TesterScenar
                     var actual = ResolveJsonValue(step, assertion, responseBody);
                     if (string.Equals(actual, assertion.ExpectedValue, StringComparison.Ordinal)) continue;
                     return $"Node '{step.Name}' expected '{assertion.JsonPath}' to equal '{assertion.ExpectedValue}', but received '{actual}'.";
+                case "smsqueued":
+                    if (smsMock is null) return $"Node '{step.Name}' requires SMS mock activity, but the sandbox SMS mock is not running.";
+                    var recipient = ResolveVariables(assertion.ExpectedValue ?? string.Empty, $"smsQueued recipient for '{step.Name}'");
+                    if (string.IsNullOrWhiteSpace(recipient)) return $"Node '{step.Name}' smsQueued assertion needs expectedValue with a recipient.";
+                    if (smsMock.HasQueuedMessage(recipient, assertion.JsonPath)) continue;
+                    return $"Node '{step.Name}' expected a queued SMS for '{recipient}', but no matching sandbox message was recorded.";
                 default:
                     return $"Node '{step.Name}' has an unsupported assertion type '{assertion.Type}'.";
             }

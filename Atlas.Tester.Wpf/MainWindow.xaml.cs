@@ -78,7 +78,7 @@ public partial class MainWindow : UserControl
             var options = new TesterOptions((int)ThreadsSlider.Value, iterations, TimeSpan.FromSeconds(RampUpSlider.Value), client.Timeout);
             expectedRequests = options.Threads * options.Iterations * scenario.Steps.Count; observedRequests = 0; successfulRequests = 0; runClock = Stopwatch.StartNew();
             RequestsValue.Text = "0"; SuccessValue.Text = "0.00%"; LatencyValue.Text = "—"; MockProgress.Value = 0; ChartStatus.Text = $"Running {scenario.DisplayName} · 0 / {expectedRequests} requests";
-            var measurements = await runner.RunScenarioAsync(options, ct => new HttpScenarioExecutor(client, scenario, scenario.Variables ?? new Dictionary<string, string>()).RunAsync(ct), new Progress<RequestMeasurement>(UpdateLiveMetrics), cancellation!.Token);
+            var measurements = await runner.RunScenarioAsync(options, ct => new HttpScenarioExecutor(client, scenario, scenario.Variables ?? new Dictionary<string, string>(), sandboxRuntime?.SmsMock).RunAsync(ct), new Progress<RequestMeasurement>(UpdateLiveMetrics), cancellation!.Token);
             var rows = measurements.GroupBy(x => new { x.Scenario, x.Endpoint }).Select(group => { var values = group.Select(x => x.Duration).OrderBy(x => x).ToArray(); return new ReportRow(group.Key.Scenario, group.Key.Endpoint, values.Length, group.Count(x => x.Succeeded), group.Count(x => !x.Succeeded), values.Average(x => x.TotalMilliseconds), values[Math.Min(values.Length - 1, (int)Math.Ceiling(values.Length * .95) - 1)].TotalMilliseconds); }).ToArray();
             var output = Path.Combine(ClientDataPaths.ReportsDirectory, "latest"); Directory.CreateDirectory(output);
             var secretValues = (scenario.SecretVariableNames ?? []).Select(name => scenario.Variables?.GetValueOrDefault(name)).Where(value => !string.IsNullOrWhiteSpace(value)).Cast<string>().Distinct(StringComparer.Ordinal).ToArray();
@@ -143,10 +143,20 @@ public partial class MainWindow : UserControl
             if (dialog.ShowDialog() == true)
             {
                 sandboxRuntime = dialog.Runtime;
-                SetSandboxStatus($"Sandbox ready · backend and temporary PostgreSQL are running at {project.BackendUrl}");
+                SetSandboxStatus($"Sandbox ready · backend, temporary PostgreSQL and SMS mock are running at {project.BackendUrl}");
             }
         };
         panel.Children.Insert(0, sandboxButton);
+        var smsButton = new Button { Content = "SMS mock", ToolTip = "View sandbox SMS activity", Margin = new Thickness(0, 0, 8, 0), Padding = new Thickness(12, 6, 12, 6) };
+        smsButton.Click += (_, _) =>
+        {
+            var messages = sandboxRuntime?.SmsMock?.Messages ?? [];
+            var details = messages.Count == 0
+                ? "No sandbox SMS messages have been queued yet."
+                : string.Join(Environment.NewLine, messages.Select(message => $"Queued · {message.Recipient} · template {message.TemplateId} · {message.QueuedAtUtc.LocalDateTime:g} · {message.CorrelationId[..8]}"));
+            AlertWindow.Show(this, "SMS mock activity", details);
+        };
+        panel.Children.Insert(1, smsButton);
         if (panel.Parent is not Panel configuration) return;
         sandboxStatusText = new TextBlock { Foreground = new SolidColorBrush(Color.FromRgb(197, 245, 215)), TextWrapping = TextWrapping.Wrap, FontSize = 11 };
         sandboxStatusCard = new Border { Background = new SolidColorBrush(Color.FromRgb(27, 91, 63)), BorderBrush = new SolidColorBrush(Color.FromRgb(68, 164, 112)), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Padding = new Thickness(10, 8, 10, 8), Margin = new Thickness(0, 12, 0, 0), Visibility = Visibility.Collapsed, Child = sandboxStatusText };

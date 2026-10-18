@@ -54,7 +54,16 @@ internal sealed class SandboxPreparationWindow : Window
             await Runtime.StartAsync(); await Runtime.StartBackendAsync(run.StartCommand, new Dictionary<string, string> { ["ASPNETCORE_URLS"] = run.Target.ToString().TrimEnd('/') }); await Runtime.WaitForReadyAsync(project.OpenApiPath, TimeSpan.FromSeconds(60));
             dockerStatus.Foreground = new SolidColorBrush(Color.FromRgb(90, 191, 133)); dockerStatus.Text = "Isolated backend is ready."; DialogResult = true;
         }
-        catch (Exception ex) { if (Runtime is not null) await Runtime.DisposeAsync(); Runtime = null; ShowError(ex); }
+        catch (Exception ex)
+        {
+            if (Runtime is not null)
+            {
+                try { await Runtime.DisposeAsync(); }
+                catch { }
+            }
+            Runtime = null;
+            ShowError(ex);
+        }
     }
 
     private static void AddInfo(Panel root, string label, string value)
