@@ -35,6 +35,7 @@ public partial class MainWindow : UserControl
         ReportStatus.Text = "No test has run yet. Reports will be generated after completion.";
         OutputStatus.Text = $"Reports: {ClientDataPaths.ReportsDirectory}";
         AddReportActions();
+        AddSandboxAction();
         StopButton.IsEnabled = false;
         ThreadsSlider.ValueChanged += (_, _) => ThreadsValue.Text = $"{ThreadsSlider.Value:0} threads";
         RampUpSlider.ValueChanged += (_, _) => RampUpValue.Text = $"{RampUpSlider.Value:0} seconds";
@@ -114,6 +115,22 @@ public partial class MainWindow : UserControl
         actions.Children.Add(reportButton); actions.Children.Add(folderButton); panel.Children.Add(actions);
         reportButton.Tag = folderButton;
         OpenReportButton = reportButton;
+    }
+
+    private void AddSandboxAction()
+    {
+        if (StartButton.Parent is not Panel panel) return;
+        var sandboxButton = new Button { Content = "Sandbox", ToolTip = "Review the isolated sandbox plan", Margin = new Thickness(0, 0, 8, 0), Padding = new Thickness(12, 6, 12, 6) };
+        sandboxButton.Click += (_, _) =>
+        {
+            if (project is null)
+            {
+                AlertWindow.Show(this, "Sandbox project required", "Select a project before preparing an isolated sandbox.", true);
+                return;
+            }
+            new SandboxPreparationWindow(project).ShowDialog();
+        };
+        panel.Children.Insert(0, sandboxButton);
     }
 
     private void HideLegacyCredentialInputs()

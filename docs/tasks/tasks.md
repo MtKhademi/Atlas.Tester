@@ -23,7 +23,12 @@ This file is the source of truth for the ordered Atlas Tester delivery queue.
 | 8 | `SCN-RESULT-07` | `done` | `SCN-BUILDER-05`, `SCN-IMPORT-06` | [Execution result details](scenario-execution-results.md) |
 | 9 | `SCN-REFERENCE-08` | `done` | `SCN-RESULT-07` | [Reference scenarios and regression coverage](scenario-reference-coverage.md) |
 | 10 | `SCN-VARIABLES-09` | `done` | `SCN-REFERENCE-08` | [Scenario variables and captured values](scenario-variables.md) |
-| 11 | `INT-SMS-MOCK-10` | `planned` | `SCN-VARIABLES-09` | [SMS mock integration](sms-mock.md) |
+| 11 | `SBX-FOUNDATION-10` | `done` | `SCN-VARIABLES-09` | [Isolated sandbox foundation](sandbox-foundation.md) |
+| 12 | `SBX-BACKEND-DATABASE-11` | `planned` | `SBX-FOUNDATION-10` | [Ephemeral backend and database](sandbox-backend-database.md) |
+| 13 | `SBX-SMS-MOCK-12` | `planned` | `SBX-BACKEND-DATABASE-11` | [Provider-compatible SMS mock](sandbox-sms-mock.md) |
+| 14 | `SBX-EXTERNAL-MOCKS-13` | `planned` | `SBX-BACKEND-DATABASE-11` | [External HTTP service mocks](sandbox-external-mocks.md) |
+| 15 | `SBX-EVENT-BROKER-14` | `planned` | `SBX-BACKEND-DATABASE-11` | [Isolated Kafka-compatible broker](sandbox-event-broker.md) |
+| 16 | `SBX-REPORT-CLEANUP-15` | `planned` | `SBX-SMS-MOCK-12`, `SBX-EXTERNAL-MOCKS-13`, `SBX-EVENT-BROKER-14` | [Sandbox report and lifecycle cleanup](sandbox-report-cleanup.md) |
 
 ## Queue rules
 

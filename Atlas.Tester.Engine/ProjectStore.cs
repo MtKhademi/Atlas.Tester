@@ -2,7 +2,15 @@ using System.Text.Json;
 
 namespace Atlas.Tester.Engine;
 
-public sealed record ProjectDefinition(string Id, string Name, string Description, string BackendUrl, string OpenApiPath, DateTimeOffset UpdatedAtUtc);
+public sealed record ProjectDefinition(
+    string Id,
+    string Name,
+    string Description,
+    string BackendUrl,
+    string OpenApiPath,
+    DateTimeOffset UpdatedAtUtc,
+    string? SandboxBackendProjectPath = null,
+    string? SandboxStartCommand = null);
 
 public sealed class ProjectStore
 {
