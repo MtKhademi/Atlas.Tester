@@ -20,8 +20,8 @@ This file is the source of truth for the ordered Atlas Tester delivery queue.
 | 5 | `SCN-ASSERT-04` | `done` | `SCN-CAPTURE-03` | [Assertions and node outcomes](scenario-assertions.md) |
 | 6 | `SCN-BUILDER-05` | `done` | `SCN-ASSERT-04` | [Scenario Builder node properties](scenario-builder-properties.md) |
 | 7 | `SCN-IMPORT-06` | `done` | `SCN-BUILDER-05` | [Import scenario JSON into the Builder](scenario-json-import.md) |
-| 8 | `SCN-RESULT-07` | `in_progress` | `SCN-BUILDER-05`, `SCN-IMPORT-06` | [Execution result details](scenario-execution-results.md) |
-| 9 | `SCN-REFERENCE-08` | `planned` | `SCN-RESULT-07` | [Reference scenarios and regression coverage](scenario-reference-coverage.md) |
+| 8 | `SCN-RESULT-07` | `done` | `SCN-BUILDER-05`, `SCN-IMPORT-06` | [Execution result details](scenario-execution-results.md) |
+| 9 | `SCN-REFERENCE-08` | `done` | `SCN-RESULT-07` | [Reference scenarios and regression coverage](scenario-reference-coverage.md) |
 
 ## Queue rules
 

@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "name": "Reference - Invalid login",
+  "description": "Expected authentication rejection; uses test configuration values.",
+  "steps": [
+    { "id": "invalid-login", "method": "POST", "path": "/iam/api/auth/login", "displayName": "Invalid login", "requiresAuthentication": false,
+      "request": { "method": "POST", "path": "/iam/api/auth/login", "bodyJson": "{\"emailOrPhone\":\"{{emailOrPhone}}\",\"password\":\"{{password}}\"}" },
+      "assertions": [{ "type": "statusCode", "expectedValue": "401" }] }
+  ]
+}

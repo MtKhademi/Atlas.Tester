@@ -1,0 +1,9 @@
+{
+  "version": 2,
+  "name": "Reference - Unavailable service",
+  "description": "Run only against an intentionally unavailable test target to verify transport error reporting.",
+  "steps": [
+    { "id": "health", "method": "GET", "path": "/health", "displayName": "Health check", "requiresAuthentication": false,
+      "request": { "method": "GET", "path": "/health" }, "assertions": [{ "type": "reachable" }] }
+  ]
+}

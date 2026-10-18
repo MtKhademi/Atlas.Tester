@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "name": "Reference - SuperAdmin login",
+  "description": "Set {{emailOrPhone}} and {{password}} in Test configuration.",
+  "steps": [
+    { "id": "login", "method": "POST", "path": "/iam/api/auth/login", "displayName": "SuperAdmin login", "requiresAuthentication": false,
+      "request": { "method": "POST", "path": "/iam/api/auth/login", "bodyJson": "{\"emailOrPhone\":\"{{emailOrPhone}}\",\"password\":\"{{password}}\"}" },
+      "captures": [{ "variableName": "accessToken", "jsonPath": "$.accessToken" }],
+      "assertions": [{ "type": "statusCode", "expectedValue": "200" }, { "type": "jsonPathExists", "jsonPath": "$.accessToken" }] }
+  ]
+}
