@@ -195,6 +195,7 @@ public partial class HomeWindow : Window
     }
     private void ShowPage(object page)
     {
+        DisposeVisibleSandboxes();
         HomeContent.Visibility = Visibility.Collapsed;
         PageContent.Visibility = Visibility.Visible;
         SetNavigationState(page is MainWindow ? "Tests" : "Scenarios");
@@ -236,6 +237,15 @@ public partial class HomeWindow : Window
                 HideInnerHeader(page);
                 MoveScrollBarsLeft(page);
             }, System.Windows.Threading.DispatcherPriority.Loaded);
+        }
+    }
+
+    private void DisposeVisibleSandboxes()
+    {
+        foreach (var testPage in FindVisualChildren<MainWindow>(PageContent).ToArray())
+        {
+            try { testPage.DisposeSandboxAsync().GetAwaiter().GetResult(); }
+            catch (Exception ex) { Log.Error(ex, "Sandbox cleanup failed while changing project page"); }
         }
     }
 

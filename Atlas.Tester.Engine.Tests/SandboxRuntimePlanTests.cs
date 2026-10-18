@@ -12,9 +12,9 @@ public sealed class SandboxRuntimePlanTests
 
         var commands = plan.DockerCommands();
 
-        Assert.Contains("--internal", commands[0]);
+        Assert.DoesNotContain("--internal", commands[0]);
         Assert.Contains("postgres:16-alpine", commands[2]);
-        Assert.DoesNotContain("-p", commands[2]);
+        Assert.Contains($"127.0.0.1:{plan.Database.HostPort}:5432", commands[2]);
         Assert.Contains("127.0.0.1:5100:8080", commands[3]);
         Assert.Contains(commands[3], value => value.StartsWith("IAM__ConnectionString=Host=postgres;", StringComparison.Ordinal));
         Assert.All(commands, command => Assert.Contains("atlas-tester.managed=true", command));

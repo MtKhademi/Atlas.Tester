@@ -15,5 +15,17 @@ public partial class App : Application
         ClientDataPaths.EnsureDirectories();
         base.OnStartup(e);
     }
+
+    protected override void OnExit(ExitEventArgs e)
+    {
+        try
+        {
+            SandboxRuntime.DisposeAllAsync().GetAwaiter().GetResult();
+        }
+        finally
+        {
+            base.OnExit(e);
+        }
+    }
 }
 

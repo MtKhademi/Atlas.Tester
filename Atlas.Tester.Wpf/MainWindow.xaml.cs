@@ -22,6 +22,9 @@ public partial class MainWindow : UserControl
     private readonly Dictionary<string, string> savedScenarioPaths = new(StringComparer.OrdinalIgnoreCase);
     private string? latestReportDirectory;
     private readonly ProjectDefinition? project;
+    private SandboxRuntime? sandboxRuntime;
+    private Border? sandboxStatusCard;
+    private TextBlock? sandboxStatusText;
 
     public MainWindow(ProjectDefinition? project = null)
     {
@@ -96,6 +99,14 @@ public partial class MainWindow : UserControl
 
     private void StopButton_Click(object sender, RoutedEventArgs e) { Log.Information("Stop clicked"); cancellation?.Cancel(); }
 
+    public async Task DisposeSandboxAsync()
+    {
+        if (sandboxRuntime is null) return;
+        var runtime = sandboxRuntime;
+        sandboxRuntime = null;
+        await runtime.DisposeAsync();
+    }
+
     private void CloseWindow_Click(object sender, RoutedEventArgs e) { }
 
     private void Header_MouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e) { }
@@ -128,9 +139,25 @@ public partial class MainWindow : UserControl
                 AlertWindow.Show(this, "Sandbox project required", "Select a project before preparing an isolated sandbox.", true);
                 return;
             }
-            new SandboxPreparationWindow(project).ShowDialog();
+            var dialog = new SandboxPreparationWindow(project);
+            if (dialog.ShowDialog() == true)
+            {
+                sandboxRuntime = dialog.Runtime;
+                SetSandboxStatus($"Sandbox ready · backend and temporary PostgreSQL are running at {project.BackendUrl}");
+            }
         };
         panel.Children.Insert(0, sandboxButton);
+        if (panel.Parent is not Panel configuration) return;
+        sandboxStatusText = new TextBlock { Foreground = new SolidColorBrush(Color.FromRgb(197, 245, 215)), TextWrapping = TextWrapping.Wrap, FontSize = 11 };
+        sandboxStatusCard = new Border { Background = new SolidColorBrush(Color.FromRgb(27, 91, 63)), BorderBrush = new SolidColorBrush(Color.FromRgb(68, 164, 112)), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Padding = new Thickness(10, 8, 10, 8), Margin = new Thickness(0, 12, 0, 0), Visibility = Visibility.Collapsed, Child = sandboxStatusText };
+        configuration.Children.Insert(configuration.Children.IndexOf(panel) + 1, sandboxStatusCard);
+    }
+
+    private void SetSandboxStatus(string message)
+    {
+        if (sandboxStatusCard is null || sandboxStatusText is null) return;
+        sandboxStatusText.Text = $"SANDBOX READY\n{message}";
+        sandboxStatusCard.Visibility = Visibility.Visible;
     }
 
     private void HideLegacyCredentialInputs()

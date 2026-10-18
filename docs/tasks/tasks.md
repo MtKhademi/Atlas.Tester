@@ -24,7 +24,7 @@ This file is the source of truth for the ordered Atlas Tester delivery queue.
 | 9 | `SCN-REFERENCE-08` | `done` | `SCN-RESULT-07` | [Reference scenarios and regression coverage](scenario-reference-coverage.md) |
 | 10 | `SCN-VARIABLES-09` | `done` | `SCN-REFERENCE-08` | [Scenario variables and captured values](scenario-variables.md) |
 | 11 | `SBX-FOUNDATION-10` | `done` | `SCN-VARIABLES-09` | [Isolated sandbox foundation](sandbox-foundation.md) |
-| 12 | `SBX-BACKEND-DATABASE-11` | `in_progress` | `SBX-FOUNDATION-10` | [Ephemeral backend and database](sandbox-backend-database.md) |
+| 12 | `SBX-BACKEND-DATABASE-11` | `done` | `SBX-FOUNDATION-10` | [Ephemeral backend and database](sandbox-backend-database.md) |
 | 13 | `SBX-SMS-MOCK-12` | `planned` | `SBX-BACKEND-DATABASE-11` | [Provider-compatible SMS mock](sandbox-sms-mock.md) |
 | 14 | `SBX-EXTERNAL-MOCKS-13` | `planned` | `SBX-BACKEND-DATABASE-11` | [External HTTP service mocks](sandbox-external-mocks.md) |
 | 15 | `SBX-EVENT-BROKER-14` | `planned` | `SBX-BACKEND-DATABASE-11` | [Isolated Kafka-compatible broker](sandbox-event-broker.md) |

@@ -1,6 +1,9 @@
+using System.Net;
+using System.Net.Sockets;
+
 namespace Atlas.Tester.Engine;
 
-public sealed record SandboxDatabaseSpec(string ContainerName, string VolumeName, string HostName, string DatabaseName, string UserName, string Password);
+public sealed record SandboxDatabaseSpec(string ContainerName, string VolumeName, string HostName, int HostPort, string DatabaseName, string UserName, string Password);
 public sealed record SandboxBackendSpec(string ContainerName, int HostPort, int ContainerPort, string Image, string WorkingDirectory, IReadOnlyDictionary<string, string> Environment);
 public sealed record SandboxRuntimePlan(SandboxRunPlan Run, SandboxDatabaseSpec Database, SandboxBackendSpec Backend)
 {
@@ -12,7 +15,7 @@ public sealed record SandboxRuntimePlan(SandboxRunPlan Run, SandboxDatabaseSpec 
         if (string.IsNullOrWhiteSpace(backendImage)) throw new ArgumentException("A backend image is required.", nameof(backendImage));
         if (string.IsNullOrWhiteSpace(connectionStringEnvironmentVariable)) throw new ArgumentException("A backend connection-string environment variable is required.", nameof(connectionStringEnvironmentVariable));
         var suffix = run.RunId[..12];
-        var database = new SandboxDatabaseSpec($"atlas-tester-db-{suffix}", $"atlas-tester-db-data-{suffix}", "postgres", "atlas_tester", "atlas_tester", Guid.NewGuid().ToString("N"));
+        var database = new SandboxDatabaseSpec($"atlas-tester-db-{suffix}", $"atlas-tester-db-data-{suffix}", "postgres", FindAvailableLoopbackPort(), "atlas_tester", "atlas_tester", Guid.NewGuid().ToString("N"));
         var connectionString = $"Host={database.HostName};Port=5432;Database={database.DatabaseName};Username={database.UserName};Password={database.Password}";
         var environment = new Dictionary<string, string>(run.EnvironmentOverrides, StringComparer.OrdinalIgnoreCase)
         {
@@ -22,12 +25,19 @@ public sealed record SandboxRuntimePlan(SandboxRunPlan Run, SandboxDatabaseSpec 
         return new SandboxRuntimePlan(run, database, new SandboxBackendSpec($"atlas-tester-api-{suffix}", hostPort, 8080, backendImage, workingDirectory, environment));
     }
 
+    private static int FindAvailableLoopbackPort()
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        return ((IPEndPoint)listener.LocalEndpoint).Port;
+    }
+
     public IReadOnlyList<IReadOnlyList<string>> DockerCommands()
     {
         var labels = new[] { "--label", ManagedLabel, "--label", $"atlas-tester.run-id={Run.RunId}" };
-        var network = new List<string> { "network", "create", "--internal" }; network.AddRange(labels); network.Add(Run.NetworkName);
+        var network = new List<string> { "network", "create" }; network.AddRange(labels); network.Add(Run.NetworkName);
         var volume = new List<string> { "volume", "create" }; volume.AddRange(labels); volume.Add(Database.VolumeName);
-        var database = new List<string> { "run", "-d", "--name", Database.ContainerName, "--network", Run.NetworkName, "--network-alias", Database.HostName }; database.AddRange(labels); database.AddRange(["-e", $"POSTGRES_DB={Database.DatabaseName}", "-e", $"POSTGRES_USER={Database.UserName}", "-e", $"POSTGRES_PASSWORD={Database.Password}", "-v", $"{Database.VolumeName}:/var/lib/postgresql/data", "postgres:16-alpine"]);
+        var database = new List<string> { "run", "-d", "--name", Database.ContainerName, "--network", Run.NetworkName, "--network-alias", Database.HostName, "-p", $"127.0.0.1:{Database.HostPort}:5432" }; database.AddRange(labels); database.AddRange(["-e", $"POSTGRES_DB={Database.DatabaseName}", "-e", $"POSTGRES_USER={Database.UserName}", "-e", $"POSTGRES_PASSWORD={Database.Password}", "-v", $"{Database.VolumeName}:/var/lib/postgresql/data", "postgres:16-alpine"]);
         var backend = new List<string> { "run", "-d", "--name", Backend.ContainerName, "--network", Run.NetworkName, "-p", $"127.0.0.1:{Backend.HostPort}:{Backend.ContainerPort}" }; backend.AddRange(labels); foreach (var pair in Backend.Environment) backend.AddRange(["-e", $"{pair.Key}={pair.Value}"]); backend.Add(Backend.Image);
         var commands = new List<IReadOnlyList<string>> { network, volume, database, backend };
         return commands;
