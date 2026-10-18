@@ -30,6 +30,7 @@ public partial class ScenarioBuilderWindow : UserControl
     {
         InitializeComponent();
         AddNodePropertyEditors();
+        AddImportFileAction();
         ((NodeEditor.Parent as StackPanel)?.Parent as Border)!.Visibility = Visibility.Collapsed;
         this.catalog = catalog;
         var view = CollectionViewSource.GetDefaultView(catalog.Operations);
@@ -184,9 +185,22 @@ public partial class ScenarioBuilderWindow : UserControl
     private void ToggleImport_Click(object sender, RoutedEventArgs e) => ImportPanel.Visibility = ImportPanel.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
     private async void ImportJson_Click(object sender, RoutedEventArgs e)
     {
+        await ImportScenarioJsonAsync(ImportJsonBox.Text);
+    }
+
+    private async void ImportFile_Click(object? sender, RoutedEventArgs e)
+    {
+        var picker = new Microsoft.Win32.OpenFileDialog { Title = "Import scenario JSON", Filter = "Scenario JSON (*.json)|*.json|All files (*.*)|*.*", CheckFileExists = true, Multiselect = false };
+        if (picker.ShowDialog() != true) return;
+        try { ImportJsonBox.Text = await File.ReadAllTextAsync(picker.FileName); await ImportScenarioJsonAsync(ImportJsonBox.Text); }
+        catch (Exception ex) { AlertWindow.Show(this, "Could not read scenario file", ex.Message, true); }
+    }
+
+    private async Task ImportScenarioJsonAsync(string json)
+    {
         try
         {
-            var scenario = JsonSerializer.Deserialize<ScenarioDefinition>(ImportJsonBox.Text, JsonOptions) ?? throw new InvalidOperationException("JSON does not contain a scenario.");
+            var scenario = JsonSerializer.Deserialize<ScenarioDefinition>(json, JsonOptions) ?? throw new InvalidOperationException("JSON does not contain a scenario.");
             await LoadScenarioAsync(NormalizeScenario(scenario));
             ImportPanel.Visibility = Visibility.Collapsed;
             AlertWindow.Show(this, "Scenario loaded", "The JSON scenario is now on the canvas and ready to edit.");
@@ -290,7 +304,18 @@ public partial class ScenarioBuilderWindow : UserControl
     {
         if (string.IsNullOrWhiteSpace(scenario.Name)) throw new InvalidOperationException("Scenario JSON needs a name.");
         if (scenario.Steps is null || scenario.Steps.Count == 0) throw new InvalidOperationException("Scenario JSON needs at least one node.");
+        if (scenario.Version is < 1 or > ScenarioDefinition.CurrentVersion) throw new InvalidOperationException($"Scenario JSON version {scenario.Version} is not supported.");
+        if (scenario.Steps.Any(x => string.IsNullOrWhiteSpace(x.Method) || string.IsNullOrWhiteSpace(x.Path) || string.IsNullOrWhiteSpace(x.DisplayName))) throw new InvalidOperationException("Every imported node needs a name, method and path.");
         return scenario with { Steps = scenario.Steps.Select(x => x with { Id = string.IsNullOrWhiteSpace(x.Id) ? Guid.NewGuid().ToString("N") : x.Id, Request = x.Request ?? new ScenarioRequestDefinition(x.Method, x.Path) }).ToArray() };
+    }
+
+    private void AddImportFileAction()
+    {
+        var importContent = ImportPanel.Child as StackPanel;
+        var actions = importContent?.Children.OfType<StackPanel>().LastOrDefault();
+        if (actions is null) return;
+        var fileButton = new Wpf.Ui.Controls.Button { Content = "Choose JSON file", Icon = new Wpf.Ui.Controls.SymbolIcon { Symbol = Wpf.Ui.Controls.SymbolRegular.FolderOpen24 }, Margin = new Thickness(0, 0, 8, 0) };
+        fileButton.Click += ImportFile_Click; actions.Children.Insert(0, fileButton);
     }
     private static Color MethodColor(string method) => method.ToUpperInvariant() switch { "GET" => Color.FromRgb(218,169,55), "POST" => Color.FromRgb(39,154,104), "PUT" => Color.FromRgb(55,132,214), "PATCH" => Color.FromRgb(155,91,196), "DELETE" => Color.FromRgb(194,75,91), _ => Color.FromRgb(91,126,151) };
     private static Color BlendWithSurface(Color accent) => Color.FromRgb((byte)((accent.R + 53) / 2), (byte)((accent.G + 55) / 2), (byte)((accent.B + 70) / 2));
