@@ -55,9 +55,10 @@ public sealed partial class HttpScenarioExecutor(HttpClient client, TesterScenar
                 var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
                 string? captureError = null;
                 string? assertionError = null;
+                IReadOnlyDictionary<string, string> capturedValues = new Dictionary<string, string>();
                 if (step.Captures?.Count > 0)
                 {
-                    try { CaptureResponse(step, responseBody); }
+                    try { capturedValues = CaptureResponse(step, responseBody); }
                     catch (InvalidOperationException ex) { captureError = ex.Message; }
                 }
                 if (response.IsSuccessStatusCode)
@@ -70,7 +71,7 @@ public sealed partial class HttpScenarioExecutor(HttpClient client, TesterScenar
                 var hasAssertions = step.Assertions?.Count > 0;
                 var succeeded = hasAssertions ? assertionError is null && captureError is null : response.IsSuccessStatusCode && captureError is null;
                 var error = captureError ?? assertionError ?? (succeeded ? null : $"HTTP {(int)response.StatusCode} ({response.ReasonPhrase})");
-                results.Add(new(scenario.Key, step.Path, succeeded, (int)response.StatusCode, duration, error, step.Method, response.RequestMessage?.RequestUri?.ToString() ?? path, requestBody, responseBody));
+                results.Add(new(scenario.Key, step.Path, succeeded, (int)response.StatusCode, duration, error, step.Method, response.RequestMessage?.RequestUri?.ToString() ?? path, requestBody, responseBody, capturedValues));
             }
             catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
             {
@@ -123,7 +124,7 @@ public sealed partial class HttpScenarioExecutor(HttpClient client, TesterScenar
         if (!string.IsNullOrWhiteSpace(value)) variables[variableName] = value;
     }
 
-    private void CaptureResponse(ScenarioStep step, string responseBody)
+    private IReadOnlyDictionary<string, string> CaptureResponse(ScenarioStep step, string responseBody)
     {
         if (string.IsNullOrWhiteSpace(responseBody))
             throw new InvalidOperationException($"Node '{step.Name}' could not capture response values because the response body is empty.");
@@ -132,14 +133,16 @@ public sealed partial class HttpScenarioExecutor(HttpClient client, TesterScenar
         catch (JsonException) { throw new InvalidOperationException($"Node '{step.Name}' could not capture response values because the response is not valid JSON."); }
         using (document)
         {
+            var captured = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (var capture in step.Captures!)
             {
-                try { SetVariable(capture.VariableName, JsonPathValueResolver.Resolve(document.RootElement, capture.JsonPath)); }
+                try { var value = JsonPathValueResolver.Resolve(document.RootElement, capture.JsonPath); SetVariable(capture.VariableName, value); captured[capture.VariableName] = value; }
                 catch (InvalidOperationException ex)
                 {
                     throw new InvalidOperationException($"Node '{step.Name}' could not capture '{capture.VariableName}' from '{capture.JsonPath}': {ex.Message}");
                 }
             }
+            return captured;
         }
     }
 

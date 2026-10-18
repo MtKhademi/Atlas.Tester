@@ -92,7 +92,7 @@ public partial class MainWindow : UserControl
             var measurements = await runner.RunScenarioAsync(options, ct => new HttpScenarioExecutor(client, scenario, credentials).RunAsync(ct), new Progress<RequestMeasurement>(UpdateLiveMetrics), cancellation!.Token);
             var rows = measurements.GroupBy(x => new { x.Scenario, x.Endpoint }).Select(group => { var values = group.Select(x => x.Duration).OrderBy(x => x).ToArray(); return new ReportRow(group.Key.Scenario, group.Key.Endpoint, values.Length, group.Count(x => x.Succeeded), group.Count(x => !x.Succeeded), values.Average(x => x.TotalMilliseconds), values[Math.Min(values.Length - 1, (int)Math.Ceiling(values.Length * .95) - 1)].TotalMilliseconds); }).ToArray();
             var output = Path.Combine(ClientDataPaths.ReportsDirectory, "latest"); Directory.CreateDirectory(output);
-            var details = measurements.Select(x => new RequestReportDetail(x.Scenario, x.Endpoint, x.Method, x.RequestUrl, x.RequestBody, x.StatusCode, x.ResponseBody, x.Error, x.Duration.TotalMilliseconds, x.Succeeded)).ToArray();
+            var details = measurements.Select(x => new RequestReportDetail(x.Scenario, x.Endpoint, x.Method, x.RequestUrl, x.RequestBody, x.StatusCode, x.ResponseBody, x.Error, x.Duration.TotalMilliseconds, x.Succeeded, x.CapturedValues)).ToArray();
             var report = new TesterReport(DateTimeOffset.UtcNow, rows, details);
             latestReportDirectory = output;
             OpenReportButton?.SetValue(IsEnabledProperty, true);

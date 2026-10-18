@@ -21,7 +21,8 @@ public sealed record RequestMeasurement(
     string? Method = null,
     string? RequestUrl = null,
     string? RequestBody = null,
-    string? ResponseBody = null);
+    string? ResponseBody = null,
+    IReadOnlyDictionary<string, string>? CapturedValues = null);
 public sealed record TesterSummary(int Total, int Succeeded, int Failed, double RequestsPerSecond, TimeSpan AverageLatency, TimeSpan P95Latency, IReadOnlyDictionary<string, int> StatusCodes);
 
 public sealed class TesterRunner

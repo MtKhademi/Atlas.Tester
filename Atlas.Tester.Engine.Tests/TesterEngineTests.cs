@@ -268,6 +268,7 @@ public sealed class TesterEngineTests
 
         Assert.All(results, result => Assert.True(result.Succeeded));
         Assert.Equal("{\"email\":\"new-user@atlas.test\"}", handler.Requests[1].Body);
+        Assert.Equal("new-user@atlas.test", results[0].CapturedValues!["registeredEmail"]);
     }
 
     [Fact]
