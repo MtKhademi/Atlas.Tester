@@ -22,11 +22,15 @@ public partial class ScenarioBuilderWindow : UserControl
     private int selectedNodeIndex = -1;
     private bool loadingSavedScenarios;
     private TextBox? nodeAssertionsBox;
+    private StackPanel? bodyFieldsPanel;
+    private StackPanel? captureFieldsPanel;
+    private TextBlock? variablesHint;
 
     private ScenarioBuilderWindow(OpenApiCatalog catalog)
     {
         InitializeComponent();
-        AddAssertionEditor();
+        AddNodePropertyEditors();
+        ((NodeEditor.Parent as StackPanel)?.Parent as Border)!.Visibility = Visibility.Collapsed;
         this.catalog = catalog;
         var view = CollectionViewSource.GetDefaultView(catalog.Operations);
         view.GroupDescriptions.Add(new PropertyGroupDescription(nameof(OpenApiOperation.TagName)));
@@ -80,9 +84,14 @@ public partial class ScenarioBuilderWindow : UserControl
                 AddConnector(new Point(px + cardWidth, py + cardHeight / 2), new Point(x, top + cardHeight / 2));
             }
             var accent = MethodColor(node.Method);
-            var card = new Border { Width = cardWidth, Height = cardHeight, Padding = new Thickness(14, 8, 16, 8), Background = new SolidColorBrush(BlendWithSurface(accent)), BorderBrush = new SolidColorBrush(index == selectedNodeIndex ? Color.FromRgb(255, 255, 255) : accent), BorderThickness = new Thickness(index == selectedNodeIndex ? 2.5 : 1.8), CornerRadius = new CornerRadius(9), Cursor = Cursors.Hand, Tag = index };
+            var card = new Border { Width = cardWidth, Height = cardHeight, Padding = new Thickness(14, 8, 4, 3), Background = new SolidColorBrush(BlendWithSurface(accent)), BorderBrush = new SolidColorBrush(index == selectedNodeIndex ? Color.FromRgb(255, 255, 255) : accent), BorderThickness = new Thickness(index == selectedNodeIndex ? 2.5 : 1.8), CornerRadius = new CornerRadius(9), Cursor = Cursors.Hand, Tag = index };
             card.MouseLeftButtonUp += NodeCard_Click;
-            card.Child = new StackPanel { Children = { new TextBlock { Text = $"{node.Method.ToUpperInvariant()}  {node.DisplayName}", Foreground = new SolidColorBrush(Color.FromRgb(245, 248, 252)), FontSize = 11, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis }, new TextBlock { Text = node.Path, Foreground = new SolidColorBrush(Color.FromRgb(220, 226, 234)), FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 4, 0, 0) } } };
+            card.MouseLeftButtonDown += NodeCard_DoubleClick;
+            var content = new Grid();
+            var text = new StackPanel { Children = { new TextBlock { Text = $"{node.Method.ToUpperInvariant()}  {node.DisplayName}", Foreground = new SolidColorBrush(Color.FromRgb(245, 248, 252)), FontSize = 11, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis }, new TextBlock { Text = node.Path, Foreground = new SolidColorBrush(Color.FromRgb(220, 226, 234)), FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 4, 0, 0) } } };
+            content.Children.Add(text);
+            var details = new Button { Content = "⚙", Width = 20, Height = 20, Padding = new Thickness(0), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom, ToolTip = "Edit node details", Tag = index, FontSize = 12, Margin = new Thickness(0, 0, -1, -1) };
+            details.Click += NodeDetails_Click; content.Children.Add(details); card.Child = content;
             Canvas.SetLeft(card, x); Canvas.SetTop(card, top); WorkflowCanvas.Children.Add(card);
         }
         var rows = nodes.Count == 0 ? 1 : (nodes.Count + columns - 1) / columns;
@@ -94,6 +103,27 @@ public partial class ScenarioBuilderWindow : UserControl
         selectedNodeIndex = (int)((Border)sender).Tag;
         RenderWorkflow();
         LoadNodeEditor();
+    }
+
+    private void NodeCard_DoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ClickCount != 2) return;
+        selectedNodeIndex = (int)((Border)sender).Tag;
+        OpenNodeDetails(); e.Handled = true;
+    }
+
+    private void NodeDetails_Click(object sender, RoutedEventArgs e)
+    {
+        selectedNodeIndex = (int)((Button)sender).Tag;
+        OpenNodeDetails(); e.Handled = true;
+    }
+
+    private void OpenNodeDetails()
+    {
+        if (selectedNodeIndex < 0 || selectedNodeIndex >= nodes.Count) return;
+        var dialog = new NodeDetailsWindow(nodes[selectedNodeIndex], nodes.Take(selectedNodeIndex).SelectMany(x => x.Captures ?? []).Select(x => x.VariableName));
+        if (dialog.ShowDialog() != true || dialog.UpdatedNode is null) return;
+        nodes[selectedNodeIndex] = dialog.UpdatedNode; RenderWorkflow(); UpdateWorkflowSummary();
     }
 
     private void AddConnector(params Point[] points)
@@ -113,6 +143,10 @@ public partial class ScenarioBuilderWindow : UserControl
         NodeBodyBox.Text = node.Request.BodyJson ?? "";
         NodeHeadersBox.Text = SerializeOrEmpty(node.Request.Headers); NodeQueryBox.Text = SerializeOrEmpty(node.Request.Query); NodePathParametersBox.Text = SerializeOrEmpty(node.Request.PathParameters);
         nodeAssertionsBox!.Text = node.Assertions is not { Count: > 0 } ? string.Empty : JsonSerializer.Serialize(node.Assertions, JsonOptions);
+        LoadBodyFields(node.Request.BodyJson);
+        LoadCaptures(node.Captures);
+        var variables = nodes.Take(selectedNodeIndex).SelectMany(x => x.Captures ?? []).Select(x => x.VariableName).Distinct(StringComparer.OrdinalIgnoreCase);
+        variablesHint!.Text = variables.Any() ? $"Earlier variables: {string.Join(", ", variables.Select(x => "{{" + x + "}}"))}" : "Earlier variables: none yet";
     }
 
     private void ApplyNodeEdits_Click(object sender, RoutedEventArgs e)
@@ -123,9 +157,9 @@ public partial class ScenarioBuilderWindow : UserControl
             var previous = nodes[selectedNodeIndex];
             var method = NodeMethodBox.Text.Trim().ToUpperInvariant(); var path = NodePathBox.Text.Trim(); var title = NodeDisplayNameBox.Text.Trim();
             if (string.IsNullOrWhiteSpace(method) || string.IsNullOrWhiteSpace(path) || string.IsNullOrWhiteSpace(title)) throw new InvalidOperationException("Node name, method and path are required.");
-            var request = new ScenarioRequestDefinition(method, path, ParseDictionary(NodeHeadersBox.Text), ParseDictionary(NodeQueryBox.Text), ParseDictionary(NodePathParametersBox.Text), EmptyToNull(NodeBodyBox.Text));
+            var request = new ScenarioRequestDefinition(method, path, ParseDictionary(NodeHeadersBox.Text), ParseDictionary(NodeQueryBox.Text), ParseDictionary(NodePathParametersBox.Text), BuildBodyJson());
             var assertions = ParseAssertions(nodeAssertionsBox!.Text);
-            nodes[selectedNodeIndex] = previous with { Method = method, Path = path, DisplayName = title, Request = request, Assertions = assertions };
+            nodes[selectedNodeIndex] = previous with { Method = method, Path = path, DisplayName = title, Request = request, Assertions = assertions, Captures = ReadCaptures() };
             RenderWorkflow();
         }
         catch (Exception ex) { AlertWindow.Show(this, "Node data is invalid", ex.Message, true); }
@@ -199,17 +233,59 @@ public partial class ScenarioBuilderWindow : UserControl
     private static IReadOnlyDictionary<string, string>? ParseDictionary(string json) => string.IsNullOrWhiteSpace(json) ? null : JsonSerializer.Deserialize<Dictionary<string, string>>(json, JsonOptions) ?? throw new InvalidOperationException("A request collection must be a JSON object of string values.");
     private static IReadOnlyList<ScenarioAssertionDefinition> ParseAssertions(string json) => string.IsNullOrWhiteSpace(json) ? [] : JsonSerializer.Deserialize<ScenarioAssertionDefinition[]>(json, JsonOptions) ?? throw new InvalidOperationException("Assertions must be a JSON array.");
 
-    private void AddAssertionEditor()
+    private void AddNodePropertyEditors()
     {
         var applyButton = NodeEditor.Children.OfType<FrameworkElement>().Single(child => Grid.GetRow(child) == 3);
-        NodeEditor.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        Grid.SetRow(applyButton, 4);
-        var panel = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
-        panel.Children.Add(new TextBlock { Text = "ASSERTIONS JSON (OPTIONAL)", Foreground = new SolidColorBrush(Color.FromRgb(174, 179, 192)), FontSize = 10, Margin = new Thickness(0, 0, 0, 4) });
+        for (var row = 0; row < 3; row++) NodeEditor.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        Grid.SetRow(applyButton, 6);
+        bodyFieldsPanel = AddEditorPanel(3, "REQUEST BODY FIELDS", "Add body field", (_, _) => AddKeyValueRow(bodyFieldsPanel!, "field", "value"));
+        captureFieldsPanel = AddEditorPanel(4, "CAPTURE RESPONSE VALUES", "Add capture", (_, _) => AddKeyValueRow(captureFieldsPanel!, "variable", "$.json.path"));
+        variablesHint = new TextBlock { Foreground = new SolidColorBrush(Color.FromRgb(143, 150, 168)), FontSize = 10, Margin = new Thickness(0, 4, 0, 0) };
+        captureFieldsPanel.Children.Add(variablesHint);
+        var assertionPanel = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
+        assertionPanel.Children.Add(new TextBlock { Text = "ASSERTIONS JSON (OPTIONAL)", Foreground = new SolidColorBrush(Color.FromRgb(174, 179, 192)), FontSize = 10, Margin = new Thickness(0, 0, 0, 4) });
         nodeAssertionsBox = new TextBox { Height = 58, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, FontFamily = new FontFamily("Consolas"), FontSize = 11, ToolTip = "Example: [{\"type\":\"statusCode\",\"expectedValue\":\"200\"}]" };
-        panel.Children.Add(nodeAssertionsBox);
-        Grid.SetRow(panel, 3); Grid.SetColumnSpan(panel, 2); NodeEditor.Children.Add(panel);
+        assertionPanel.Children.Add(nodeAssertionsBox); Grid.SetRow(assertionPanel, 5); Grid.SetColumnSpan(assertionPanel, 2); NodeEditor.Children.Add(assertionPanel);
     }
+
+    private StackPanel AddEditorPanel(int row, string title, string buttonText, RoutedEventHandler addHandler)
+    {
+        var panel = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
+        var header = new StackPanel { Orientation = Orientation.Horizontal };
+        header.Children.Add(new TextBlock { Text = title, Foreground = new SolidColorBrush(Color.FromRgb(174, 179, 192)), FontSize = 10, VerticalAlignment = VerticalAlignment.Center });
+        var button = new Button { Content = buttonText, FontSize = 10, Margin = new Thickness(10, 0, 0, 3), Padding = new Thickness(6, 2, 6, 2) };
+        button.Click += addHandler; header.Children.Add(button); panel.Children.Add(header);
+        Grid.SetRow(panel, row); Grid.SetColumnSpan(panel, 2); NodeEditor.Children.Add(panel); return panel;
+    }
+
+    private static void AddKeyValueRow(StackPanel panel, string keyHint, string valueHint, string? key = null, string? value = null)
+    {
+        var row = new Grid { Margin = new Thickness(0, 2, 0, 0) }; row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(180) }); row.ColumnDefinitions.Add(new ColumnDefinition());
+        row.Children.Add(new TextBox { Text = key ?? string.Empty, ToolTip = keyHint, Height = 26, VerticalContentAlignment = VerticalAlignment.Center });
+        var valueBox = new TextBox { Text = value ?? string.Empty, ToolTip = valueHint, Height = 26, Margin = new Thickness(6, 0, 0, 0), VerticalContentAlignment = VerticalAlignment.Center };
+        Grid.SetColumn(valueBox, 1); row.Children.Add(valueBox); panel.Children.Insert(Math.Max(1, panel.Children.Count - (panel == null ? 0 : 0)), row);
+    }
+
+    private void LoadBodyFields(string? body)
+    {
+        ClearEditorRows(bodyFieldsPanel!); if (string.IsNullOrWhiteSpace(body)) return;
+        try { using var document = JsonDocument.Parse(body); if (document.RootElement.ValueKind != JsonValueKind.Object) return; foreach (var item in document.RootElement.EnumerateObject()) AddKeyValueRow(bodyFieldsPanel!, "field", "value", item.Name, item.Value.ValueKind == JsonValueKind.String ? item.Value.GetString() : item.Value.GetRawText()); }
+        catch (JsonException) { }
+    }
+
+    private void LoadCaptures(IReadOnlyList<ScenarioCaptureDefinition>? captures)
+    {
+        ClearEditorRows(captureFieldsPanel!); foreach (var capture in captures ?? []) AddKeyValueRow(captureFieldsPanel!, "variable", "$.json.path", capture.VariableName, capture.JsonPath);
+    }
+
+    private static void ClearEditorRows(StackPanel panel) { while (panel.Children.Count > 1 && panel.Children[1] is Grid) panel.Children.RemoveAt(1); }
+    private string? BuildBodyJson()
+    {
+        var entries = ReadKeyValues(bodyFieldsPanel!).ToArray();
+        return entries.Length == 0 ? EmptyToNull(NodeBodyBox.Text) : JsonSerializer.Serialize(entries.ToDictionary(x => x.Key, x => x.Value), JsonOptions);
+    }
+    private IReadOnlyList<ScenarioCaptureDefinition> ReadCaptures() => ReadKeyValues(captureFieldsPanel!).Select(x => new ScenarioCaptureDefinition(x.Key, x.Value)).ToArray();
+    private static IEnumerable<KeyValuePair<string, string>> ReadKeyValues(StackPanel panel) => panel.Children.OfType<Grid>().Select(grid => grid.Children.OfType<TextBox>().ToArray()).Where(boxes => boxes.Length == 2 && !string.IsNullOrWhiteSpace(boxes[0].Text)).Select(boxes => new KeyValuePair<string, string>(boxes[0].Text.Trim(), boxes[1].Text.Trim()));
     private static ScenarioDefinition NormalizeScenario(ScenarioDefinition scenario)
     {
         if (string.IsNullOrWhiteSpace(scenario.Name)) throw new InvalidOperationException("Scenario JSON needs a name.");
