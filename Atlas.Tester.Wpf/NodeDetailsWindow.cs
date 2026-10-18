@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -11,16 +12,18 @@ public sealed class NodeDetailsWindow : Window
     private readonly ScenarioNodeDefinition original;
     private readonly TextBox title = new(), path = new(), body = new(), captures = new(), assertions = new();
     private readonly Border methodBadge = new();
+    private readonly HashSet<string> availableVariables;
     public ScenarioNodeDefinition? UpdatedNode { get; private set; }
 
-    public NodeDetailsWindow(ScenarioNodeDefinition node, IEnumerable<string> earlierVariables)
+    public NodeDetailsWindow(ScenarioNodeDefinition node, IEnumerable<string> earlierVariables, IEnumerable<string>? globalVariables = null)
     {
         original = node;
+        availableVariables = new HashSet<string>((globalVariables ?? []).Concat(earlierVariables), StringComparer.OrdinalIgnoreCase);
         Title = "Node details"; Width = 760; Height = 720; WindowStartupLocation = WindowStartupLocation.CenterOwner; ResizeMode = ResizeMode.CanResize; Background = new SolidColorBrush(Color.FromRgb(30, 32, 42));
         Owner = Application.Current.Windows.OfType<Window>().FirstOrDefault(window => window.IsActive);
         var root = new StackPanel { Margin = new Thickness(24) };
         root.Children.Add(new TextBlock { Text = "NODE DETAILS", FontSize = 18, FontWeight = FontWeights.Bold, Foreground = new SolidColorBrush(Color.FromRgb(85,181,255)) });
-        root.Children.Add(new TextBlock { Text = "Configure this API step. Use {{variable}} values captured by earlier nodes.", Foreground = new SolidColorBrush(Color.FromRgb(174,179,192)), Margin = new Thickness(0,5,0,18) });
+        root.Children.Add(new TextBlock { Text = "Configure this API step. Use {{variable}} values from scenario variables or earlier nodes.", Foreground = new SolidColorBrush(Color.FromRgb(174,179,192)), Margin = new Thickness(0,5,0,18) });
         var identity = new Grid { Margin = new Thickness(0,0,0,12) };
         identity.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(96) }); identity.ColumnDefinitions.Add(new ColumnDefinition()); identity.ColumnDefinitions.Add(new ColumnDefinition());
         StyleMethod(node.Method);
@@ -28,8 +31,10 @@ public sealed class NodeDetailsWindow : Window
         Add(root, "REQUEST BODY", body, node.Request.BodyJson ?? "", 110);
         Add(root, "CAPTURES JSON", captures, node.Captures.Count == 0 ? "" : JsonSerializer.Serialize(node.Captures, new JsonSerializerOptions { WriteIndented = true }), 82);
         Add(root, "ASSERTIONS JSON", assertions, node.Assertions.Count == 0 ? "" : JsonSerializer.Serialize(node.Assertions, new JsonSerializerOptions { WriteIndented = true }), 82);
+        var global = (globalVariables ?? []).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         var variables = earlierVariables.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-        root.Children.Add(new TextBlock { Text = variables.Length == 0 ? "Earlier variables: none" : $"Earlier variables: {string.Join(", ", variables.Select(x => "{{" + x + "}}"))}", Foreground = new SolidColorBrush(Color.FromRgb(143,150,168)), FontSize = 11, Margin = new Thickness(0,0,0,14) });
+        var available = global.Concat(variables).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        root.Children.Add(new TextBlock { Text = available.Length == 0 ? "Available variables: none" : $"Available variables: {string.Join(", ", available.Select(x => "{{" + x + "}}"))}", Foreground = new SolidColorBrush(Color.FromRgb(143,150,168)), FontSize = 11, Margin = new Thickness(0,0,0,14) });
         var actions = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0,10,0,0) };
         var cancel = new Button { Content = "Cancel", Margin = new Thickness(0,0,8,0), Padding = new Thickness(16,8,16,8), Background = new SolidColorBrush(Color.FromRgb(69,72,88)), Foreground = Brushes.White, BorderThickness = new Thickness(0) }; cancel.Click += (_, _) => Close();
         var save = new Button { Content = "Apply node changes", Padding = new Thickness(16,8,16,8), Background = new SolidColorBrush(Color.FromRgb(33,111,164)), Foreground = Brushes.White, BorderThickness = new Thickness(0) }; save.Click += Save_Click; actions.Children.Add(cancel); actions.Children.Add(save); root.Children.Add(actions);
@@ -70,9 +75,23 @@ public sealed class NodeDetailsWindow : Window
             var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
             var captureValues = string.IsNullOrWhiteSpace(captures.Text) ? [] : JsonSerializer.Deserialize<ScenarioCaptureDefinition[]>(captures.Text, options) ?? [];
             var assertionValues = string.IsNullOrWhiteSpace(assertions.Text) ? [] : JsonSerializer.Deserialize<ScenarioAssertionDefinition[]>(assertions.Text, options) ?? [];
+            ValidateVariables(path.Text, "address");
+            ValidateVariables(body.Text, "request body");
+            foreach (var assertion in assertionValues) ValidateVariables(assertion.ExpectedValue, "assertion");
             UpdatedNode = original with { DisplayName = title.Text.Trim(), Method = selectedMethod, Path = path.Text.Trim(), Request = original.Request with { Method = selectedMethod, Path = path.Text.Trim(), BodyJson = string.IsNullOrWhiteSpace(body.Text) ? null : body.Text.Trim() }, Captures = captureValues, Assertions = assertionValues };
             DialogResult = true;
         }
         catch (Exception ex) { AlertWindow.Show(this, "Node data is invalid", ex.Message, true); }
+    }
+
+    private void ValidateVariables(string? value, string location)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return;
+        var missing = Regex.Matches(value, @"\{\{\s*([^{}\s]+)\s*\}\}")
+            .Select(match => match.Groups[1].Value)
+            .Where(name => !availableVariables.Contains(name))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (missing.Length > 0) throw new InvalidOperationException($"Unknown variable in {location}: {string.Join(", ", missing.Select(name => "{{" + name + "}}"))}. Add it under Variables or capture it in an earlier node.");
     }
 }

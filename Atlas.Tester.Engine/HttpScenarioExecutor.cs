@@ -17,6 +17,11 @@ public sealed partial class HttpScenarioExecutor(HttpClient client, TesterScenar
         ["password"] = credentials.Password
     };
 
+    public HttpScenarioExecutor(HttpClient client, TesterScenario scenario, IReadOnlyDictionary<string, string> scenarioVariables) : this(client, scenario, new ScenarioCredentials(scenarioVariables.GetValueOrDefault("emailOrPhone") ?? scenarioVariables.GetValueOrDefault("phone") ?? scenarioVariables.GetValueOrDefault("email") ?? "", scenarioVariables.GetValueOrDefault("password") ?? ""))
+    {
+        foreach (var variable in scenarioVariables) variables[variable.Key] = variable.Value;
+    }
+
     public async Task<IReadOnlyList<RequestMeasurement>> RunAsync(CancellationToken cancellationToken = default)
     {
         TesterLogging.Logger.Information("Scenario started: {Scenario}", scenario.Key);

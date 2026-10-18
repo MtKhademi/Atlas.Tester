@@ -19,6 +19,7 @@ public partial class ScenarioBuilderWindow : UserControl
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true, WriteIndented = true };
     private readonly OpenApiCatalog catalog;
     private readonly List<ScenarioNodeDefinition> nodes = [];
+    private readonly List<ScenarioVariableDefinition> globalVariables = [];
     private int selectedNodeIndex = -1;
     private bool loadingSavedScenarios;
     private TextBox? nodeAssertionsBox;
@@ -31,6 +32,7 @@ public partial class ScenarioBuilderWindow : UserControl
         InitializeComponent();
         AddNodePropertyEditors();
         AddImportFileAction();
+        AddVariablesAction();
         ((NodeEditor.Parent as StackPanel)?.Parent as Border)!.Visibility = Visibility.Collapsed;
         this.catalog = catalog;
         var view = CollectionViewSource.GetDefaultView(catalog.Operations);
@@ -122,7 +124,7 @@ public partial class ScenarioBuilderWindow : UserControl
     private void OpenNodeDetails()
     {
         if (selectedNodeIndex < 0 || selectedNodeIndex >= nodes.Count) return;
-        var dialog = new NodeDetailsWindow(nodes[selectedNodeIndex], nodes.Take(selectedNodeIndex).SelectMany(x => x.Captures ?? []).Select(x => x.VariableName));
+        var dialog = new NodeDetailsWindow(nodes[selectedNodeIndex], nodes.Take(selectedNodeIndex).SelectMany(x => x.Captures ?? []).Select(x => x.VariableName), globalVariables.Select(x => x.Name));
         if (dialog.ShowDialog() != true || dialog.UpdatedNode is null) return;
         nodes[selectedNodeIndex] = dialog.UpdatedNode; RenderWorkflow(); UpdateWorkflowSummary();
     }
@@ -212,6 +214,7 @@ public partial class ScenarioBuilderWindow : UserControl
     {
         NameBox.Text = scenario.Name; DescriptionBox.Text = scenario.Description;
         nodes.Clear(); nodes.AddRange(scenario.Steps);
+        globalVariables.Clear(); globalVariables.AddRange(scenario.Variables ?? []);
         selectedNodeIndex = nodes.Count == 0 ? -1 : 0;
         RenderWorkflow(); UpdateWorkflowSummary(); LoadNodeEditor();
         return Task.CompletedTask;
@@ -223,7 +226,7 @@ public partial class ScenarioBuilderWindow : UserControl
         {
             if (string.IsNullOrWhiteSpace(NameBox.Text)) throw new InvalidOperationException("Enter a name before saving the scenario.");
             if (nodes.Count == 0) throw new InvalidOperationException("Drag at least one API into the workflow before saving.");
-            var path = await new ScenarioStore().SaveAsync(new ScenarioDefinition(NameBox.Text.Trim(), DescriptionBox.Text.Trim(), nodes));
+            var path = await new ScenarioStore().SaveAsync(new ScenarioDefinition(NameBox.Text.Trim(), DescriptionBox.Text.Trim(), nodes) { Variables = globalVariables.ToArray() });
             RefreshSavedScenarios();
             AlertWindow.Show(this, "Scenario saved", $"Saved or replaced:\n{path}");
         }
@@ -238,7 +241,7 @@ public partial class ScenarioBuilderWindow : UserControl
 
     private void Clear_Click(object sender, RoutedEventArgs e)
     {
-        nodes.Clear(); selectedNodeIndex = -1; NameBox.Clear(); DescriptionBox.Clear(); RenderWorkflow(); UpdateWorkflowSummary(); LoadNodeEditor();
+        nodes.Clear(); globalVariables.Clear(); selectedNodeIndex = -1; NameBox.Clear(); DescriptionBox.Clear(); RenderWorkflow(); UpdateWorkflowSummary(); LoadNodeEditor();
     }
 
     private void UpdateWorkflowSummary() => ScenarioStepCount.Text = $"{nodes.Count} step{(nodes.Count == 1 ? "" : "s")} · drag to add";
@@ -316,6 +319,15 @@ public partial class ScenarioBuilderWindow : UserControl
         if (actions is null) return;
         var fileButton = new Wpf.Ui.Controls.Button { Content = "Choose JSON file", Icon = new Wpf.Ui.Controls.SymbolIcon { Symbol = Wpf.Ui.Controls.SymbolRegular.FolderOpen24 }, Margin = new Thickness(0, 0, 8, 0) };
         fileButton.Click += ImportFile_Click; actions.Children.Insert(0, fileButton);
+    }
+
+    private void AddVariablesAction()
+    {
+        if (NameBox.Parent is not Grid row) return;
+        ScenarioStepCount.Visibility = Visibility.Collapsed;
+        var button = new Wpf.Ui.Controls.Button { Content = "Variables", Icon = new Wpf.Ui.Controls.SymbolIcon { Symbol = Wpf.Ui.Controls.SymbolRegular.Braces24 }, HorizontalAlignment = HorizontalAlignment.Right };
+        button.Click += (_, _) => { var dialog = new ScenarioVariablesWindow(globalVariables); if (dialog.ShowDialog() == true) { globalVariables.Clear(); globalVariables.AddRange(dialog.Variables); } };
+        Grid.SetColumn(button, 2); row.Children.Add(button);
     }
     private static Color MethodColor(string method) => method.ToUpperInvariant() switch { "GET" => Color.FromRgb(218,169,55), "POST" => Color.FromRgb(39,154,104), "PUT" => Color.FromRgb(55,132,214), "PATCH" => Color.FromRgb(155,91,196), "DELETE" => Color.FromRgb(194,75,91), _ => Color.FromRgb(91,126,151) };
     private static Color BlendWithSurface(Color accent) => Color.FromRgb((byte)((accent.R + 53) / 2), (byte)((accent.G + 55) / 2), (byte)((accent.B + 70) / 2));

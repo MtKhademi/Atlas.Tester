@@ -29,32 +29,18 @@ public partial class MainWindow : UserControl
         Log.Logger = new LoggerConfiguration().MinimumLevel.Debug().WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}").CreateLogger();
         Log.Information("Tester UI started");
         InitializeComponent();
+        HideLegacyCredentialInputs();
         if (project is not null) TargetUrlBox.Text = project.BackendUrl;
         ChartStatus.Text = "Ready to run · results will appear here";
         ReportStatus.Text = "No test has run yet. Reports will be generated after completion.";
         OutputStatus.Text = $"Reports: {ClientDataPaths.ReportsDirectory}";
         AddReportActions();
-        LoadLocalDefaults();
         StopButton.IsEnabled = false;
         ThreadsSlider.ValueChanged += (_, _) => ThreadsValue.Text = $"{ThreadsSlider.Value:0} threads";
         RampUpSlider.ValueChanged += (_, _) => RampUpValue.Text = $"{RampUpSlider.Value:0} seconds";
         RefreshScenarios();
     }
 
-    private void LoadLocalDefaults()
-    {
-        var path = Path.Combine(AppContext.BaseDirectory, "appsettings.Local.json");
-        if (!File.Exists(path)) path = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "appsettings.Local.json"));
-        if (!File.Exists(path)) return;
-        try
-        {
-            using var document = JsonDocument.Parse(File.ReadAllText(path));
-            var local = document.RootElement.GetProperty("Local");
-            EmailBox.Text = local.GetProperty("EmailOrPhone").GetString() ?? string.Empty;
-            PasswordBox.Password = local.GetProperty("Password").GetString() ?? string.Empty;
-        }
-        catch (JsonException) { }
-    }
 
     private async void StartButton_Click(object sender, RoutedEventArgs e)
     {
@@ -85,14 +71,14 @@ public partial class MainWindow : UserControl
             var openApi = await OpenApiCatalog.LoadAsync(client, project?.OpenApiPath ?? "/openapi/v1.json", cancellation!.Token);
             openApi.Validate(scenario);
             ChartStatus.Text = "Running live HTTP requests"; ReportStatus.Text = "Connected to target; collecting measurements.";
-            var credentials = new ScenarioCredentials(EmailBox.Text.Trim(), PasswordBox.Password);
             var options = new TesterOptions((int)ThreadsSlider.Value, iterations, TimeSpan.FromSeconds(RampUpSlider.Value), client.Timeout);
             expectedRequests = options.Threads * options.Iterations * scenario.Steps.Count; observedRequests = 0; successfulRequests = 0; runClock = Stopwatch.StartNew();
             RequestsValue.Text = "0"; SuccessValue.Text = "0.00%"; LatencyValue.Text = "—"; MockProgress.Value = 0; ChartStatus.Text = $"Running {scenario.DisplayName} · 0 / {expectedRequests} requests";
-            var measurements = await runner.RunScenarioAsync(options, ct => new HttpScenarioExecutor(client, scenario, credentials).RunAsync(ct), new Progress<RequestMeasurement>(UpdateLiveMetrics), cancellation!.Token);
+            var measurements = await runner.RunScenarioAsync(options, ct => new HttpScenarioExecutor(client, scenario, scenario.Variables ?? new Dictionary<string, string>()).RunAsync(ct), new Progress<RequestMeasurement>(UpdateLiveMetrics), cancellation!.Token);
             var rows = measurements.GroupBy(x => new { x.Scenario, x.Endpoint }).Select(group => { var values = group.Select(x => x.Duration).OrderBy(x => x).ToArray(); return new ReportRow(group.Key.Scenario, group.Key.Endpoint, values.Length, group.Count(x => x.Succeeded), group.Count(x => !x.Succeeded), values.Average(x => x.TotalMilliseconds), values[Math.Min(values.Length - 1, (int)Math.Ceiling(values.Length * .95) - 1)].TotalMilliseconds); }).ToArray();
             var output = Path.Combine(ClientDataPaths.ReportsDirectory, "latest"); Directory.CreateDirectory(output);
-            var details = measurements.Select(x => new RequestReportDetail(x.Scenario, x.Endpoint, x.Method, x.RequestUrl, x.RequestBody, x.StatusCode, x.ResponseBody, x.Error, x.Duration.TotalMilliseconds, x.Succeeded, x.CapturedValues)).ToArray();
+            var secretValues = (scenario.SecretVariableNames ?? []).Select(name => scenario.Variables?.GetValueOrDefault(name)).Where(value => !string.IsNullOrWhiteSpace(value)).Cast<string>().Distinct(StringComparer.Ordinal).ToArray();
+            var details = measurements.Select(x => new RequestReportDetail(x.Scenario, x.Endpoint, x.Method, MaskSecrets(x.RequestUrl, secretValues), MaskSecrets(x.RequestBody, secretValues), x.StatusCode, MaskSecrets(x.ResponseBody, secretValues), MaskSecrets(x.Error, secretValues), x.Duration.TotalMilliseconds, x.Succeeded, x.CapturedValues?.ToDictionary(pair => pair.Key, pair => MaskSecrets(pair.Value, secretValues) ?? string.Empty))).ToArray();
             var report = new TesterReport(DateTimeOffset.UtcNow, rows, details);
             latestReportDirectory = output;
             OpenReportButton?.SetValue(IsEnabledProperty, true);
@@ -130,6 +116,16 @@ public partial class MainWindow : UserControl
         OpenReportButton = reportButton;
     }
 
+    private void HideLegacyCredentialInputs()
+    {
+        if (EmailBox.Parent is not Panel panel) return;
+        var emailIndex = panel.Children.IndexOf(EmailBox);
+        var passwordIndex = panel.Children.IndexOf(PasswordBox);
+        if (emailIndex > 0) panel.Children[emailIndex - 1].Visibility = Visibility.Collapsed;
+        if (passwordIndex > 0) panel.Children[passwordIndex - 1].Visibility = Visibility.Collapsed;
+        EmailBox.Visibility = Visibility.Collapsed; PasswordBox.Visibility = Visibility.Collapsed;
+    }
+
     private Button? OpenReportButton { get; set; }
 
     private void OpenLatestReport()
@@ -149,8 +145,6 @@ public partial class MainWindow : UserControl
         StartButton.IsEnabled = !running;
         StopButton.IsEnabled = running;
         TargetUrlBox.IsEnabled = !running;
-        EmailBox.IsEnabled = !running;
-        PasswordBox.IsEnabled = !running;
         ScenarioBox.IsEnabled = !running;
         ThreadsSlider.IsEnabled = !running;
         RampUpSlider.IsEnabled = !running;
@@ -198,7 +192,14 @@ public partial class MainWindow : UserControl
         Log.Information("Loading saved scenario file: {Path}", path);
         var definition = await new ScenarioStore(Path.GetDirectoryName(path)!).LoadAsync(path, cancellationToken);
         Log.Information("Saved scenario file loaded: name={Name}, steps={StepCount}", definition.Name, definition.Steps.Count);
-        return new TesterScenario($"saved:{definition.Name}", definition.Name, definition.Steps.Select(x => new ScenarioStep(x.DisplayName, x.Method, x.Path, x.RequiresAuthentication, x.Request, x.Captures, x.Assertions)).ToArray());
+        return new TesterScenario($"saved:{definition.Name}", definition.Name, definition.Steps.Select(x => new ScenarioStep(x.DisplayName, x.Method, x.Path, x.RequiresAuthentication, x.Request, x.Captures, x.Assertions)).ToArray(), definition.Variables.ToDictionary(x => x.Name, x => x.Value, StringComparer.OrdinalIgnoreCase), definition.Variables.Where(x => x.IsSecret).Select(x => x.Name).ToArray());
+    }
+
+    private static string? MaskSecrets(string? value, IEnumerable<string> secretValues)
+    {
+        if (string.IsNullOrEmpty(value)) return value;
+        foreach (var secretValue in secretValues) value = value.Replace(secretValue, "••••••", StringComparison.Ordinal);
+        return value;
     }
 
     private async void ScenarioBuilder_Click(object sender, RoutedEventArgs e)

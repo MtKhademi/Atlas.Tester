@@ -6,7 +6,10 @@ public sealed record ScenarioDefinition(string Name, string Description, IReadOn
 {
     public const int CurrentVersion = 2;
     public int Version { get; init; } = CurrentVersion;
+    public IReadOnlyList<ScenarioVariableDefinition> Variables { get; init; } = [];
 }
+
+public sealed record ScenarioVariableDefinition(string Name, string Value, bool IsSecret = false);
 
 public sealed record ScenarioNodeDefinition(string Id, string Method, string Path, string DisplayName, bool RequiresAuthentication)
 {

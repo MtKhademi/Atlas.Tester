@@ -22,6 +22,8 @@ This file is the source of truth for the ordered Atlas Tester delivery queue.
 | 7 | `SCN-IMPORT-06` | `done` | `SCN-BUILDER-05` | [Import scenario JSON into the Builder](scenario-json-import.md) |
 | 8 | `SCN-RESULT-07` | `done` | `SCN-BUILDER-05`, `SCN-IMPORT-06` | [Execution result details](scenario-execution-results.md) |
 | 9 | `SCN-REFERENCE-08` | `done` | `SCN-RESULT-07` | [Reference scenarios and regression coverage](scenario-reference-coverage.md) |
+| 10 | `SCN-VARIABLES-09` | `done` | `SCN-REFERENCE-08` | [Scenario variables and captured values](scenario-variables.md) |
+| 11 | `INT-SMS-MOCK-10` | `planned` | `SCN-VARIABLES-09` | [SMS mock integration](sms-mock.md) |
 
 ## Queue rules
 
